@@ -1,0 +1,3 @@
+[test]
+preload = ["../../scripts/test-timezone.ts", "./src/register.ts"]
+onlyFailures = true

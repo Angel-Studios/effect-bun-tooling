@@ -1,0 +1,57 @@
+{
+  "name": "@packages/effect-bun-test",
+  "version": "0.2.0",
+  "description": "Effect-native test harness on top of bun:test. it.effect / it.scoped / it.live / layer() replace inline Effect.runPromise, and it.effect runs on Effect's TestContext so virtual time is free. Vendored from Effect-TS/effect PR #6236 (@effect/bun-test, head 3f8d6e8) and extended with paved paths for env/config, scripted subprocesses, in-repo fixture roots, and tagged-error assertions.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Angel-Studios/effect-bun-tooling.git",
+    "directory": "packages/effect-bun-test"
+  },
+  "homepage": "https://github.com/Angel-Studios/effect-bun-tooling/tree/main/packages/effect-bun-test",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./command": "./src/command.ts",
+    "./env": "./src/env.ts",
+    "./fixture-root": "./src/fixture-root.ts",
+    "./fixture-root-suite": "./src/fixture-root-suite.ts",
+    "./log-capture": "./src/log-capture.ts",
+    "./utils": "./src/utils.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "bun": ">=1.3.12"
+  },
+  "scripts": {
+    "tsc": "tsc --noEmit",
+    "check": "biome check src/ __tests__/",
+    "test:unit:once": "bun test"
+  },
+  "dependencies": {
+    "@packages/fixture-residue": "workspace:*"
+  },
+  "peerDependencies": {
+    "@effect/platform": "^0.97.1",
+    "effect": "^3.22.1"
+  },
+  "peerDependenciesMeta": {
+    "@effect/platform": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@types/bun": "catalog:",
+    "effect": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "name": "@packages/bun-svelte-test",
+  "version": "0.2.0",
+  "description": "Bun.plugin Svelte 5 compiler loader plus a happy-dom preload for bun test. Lets `bun test` compile and mount .svelte components and .svelte.ts runes modules, retiring the vitest carve-out that existed solely because bun has no native .svelte loader.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Angel-Studios/effect-bun-tooling.git",
+    "directory": "packages/bun-svelte-test"
+  },
+  "homepage": "https://github.com/Angel-Studios/effect-bun-tooling/tree/main/packages/bun-svelte-test",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./register": "./src/register.ts",
+    "./mount": "./src/mount.ts",
+    "./app-doubles/navigation": "./src/app-doubles/navigation.ts",
+    "./app-doubles/state": "./src/app-doubles/state.ts",
+    "./app-doubles/environment": "./src/app-doubles/environment.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "bun": ">=1.3.12"
+  },
+  "scripts": {
+    "tsc": "tsc --noEmit",
+    "check": "biome check src/ __test__/",
+    "test:unit:once": "bun test",
+    "test:unit:coverage:ci": "bun test --coverage"
+  },
+  "dependencies": {
+    "@happy-dom/global-registrator": "20.9.0",
+    "happy-dom": "20.9.0"
+  },
+  "peerDependencies": {
+    "@testing-library/svelte": "^5.3.1",
+    "svelte": "^5.56.8"
+  },
+  "peerDependenciesMeta": {
+    "@testing-library/svelte": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@packages/effect-bun-test": "workspace:*",
+    "@testing-library/svelte": "5.3.1",
+    "@types/bun": "catalog:",
+    "effect": "catalog:",
+    "svelte": "5.56.8",
+    "typescript": "catalog:"
+  }
+}
