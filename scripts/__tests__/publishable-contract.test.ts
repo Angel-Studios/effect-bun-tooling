@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { bareImportsOf, typeScriptFiles } from '../imports';
 import { publishablePackages, readManifest, repoRoot, workspacePackages } from '../workspace';
 
 type DepMap = Readonly<Record<string, string>>;
@@ -102,8 +103,35 @@ describe('publishable package contract', () => {
           expect({ dep, range, ranged: /^[\^~>]/.test(range) }).toEqual({ dep, range, ranged: true });
         }
       });
+
+      it('declares every package its shipped source imports, so a consumer resolves all of them', () => {
+        const declared = new Set([
+          ...Object.keys(manifest.dependencies ?? {}),
+          ...Object.keys(manifest.peerDependencies ?? {}),
+          ...Object.keys(manifest.optionalDependencies ?? {}),
+        ]);
+        for (const imported of bareImportsOf(typeScriptFiles(join(pkg.dir, 'src')))) {
+          expect({ imported, declared: declared.has(imported) }).toEqual({ imported, declared: true });
+        }
+      });
+
+      it('never imports a devDependency from shipped source, because a consumer installs none of them', () => {
+        const devOnly = new Set(
+          Object.keys(manifest.devDependencies ?? {}).filter(
+            (dep) => !(dep in (manifest.dependencies ?? {})) && !(dep in (manifest.peerDependencies ?? {})),
+          ),
+        );
+        for (const imported of bareImportsOf(typeScriptFiles(join(pkg.dir, 'src')))) {
+          expect({ imported, devOnly: devOnly.has(imported) }).toEqual({ imported, devOnly: false });
+        }
+      });
     });
   }
+
+  it('extracts bare imports from shipped source, so the two import gates above are not vacuous', () => {
+    const across = packages.flatMap((pkg) => [...bareImportsOf(typeScriptFiles(join(pkg.dir, 'src')))]);
+    expect(across).toContain('effect');
+  });
 });
 
 describe('lockstep versioning', () => {
