@@ -24,7 +24,7 @@ type PublishManifest = {
 };
 
 const PACKED_DEP_FIELDS = ['dependencies', 'peerDependencies', 'optionalDependencies'] as const;
-const PUBLISHED_SCOPE = '@angel-studios/';
+const PUBLISHED_SCOPE = '@packages/';
 const CROSS_BOUNDARY_SINGLETONS = ['effect', '@effect/platform', 'svelte'];
 
 const publishManifest = (manifestPath: string): PublishManifest =>

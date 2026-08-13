@@ -1,5 +1,5 @@
 {
-  "name": "@angel-studios/uuid-effect",
+  "name": "@packages/uuid-effect",
   "version": "0.1.1",
   "description": "Effect-native UUID service: crypto-entropy UUIDs injected through Effect context (mockable in tests, no PRNG downgrade)",
   "license": "MIT",
@@ -34,13 +34,7 @@
     "test:unit:once": "bun test"
   },
   "peerDependencies": {
-    "@types/node": ">=22",
     "effect": "^3.22.1"
-  },
-  "peerDependenciesMeta": {
-    "@types/node": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@types/bun": "catalog:",

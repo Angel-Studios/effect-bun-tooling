@@ -43,10 +43,6 @@ importers:
         version: 6.0.3
 
   packages/uuid-effect:
-    dependencies:
-      '@types/node':
-        specifier: '>=22'
-        version: 26.2.0
     devDependencies:
       '@types/bun':
         specifier: 'catalog:'
