@@ -1,6 +1,6 @@
 {
   "name": "@packages/uuid-effect",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Effect-native UUID service: crypto-entropy UUIDs injected through Effect context (mockable in tests, no PRNG downgrade)",
   "license": "MIT",
   "repository": {
