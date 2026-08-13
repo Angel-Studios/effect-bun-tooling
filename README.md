@@ -18,7 +18,7 @@ Requires a runtime that executes TypeScript directly (Bun) and a TypeScript
 Two resolution paths, one seam. Registry:
 
 ```jsonc
-{ "dependencies": { "@angel-studios/uuid-effect": "^0.1.0" } }
+{ "dependencies": { "@angel-studios/uuid-effect": "^0.1.1" } }
 ```
 
 GitHub Release tarball (no registry credentials needed):
@@ -26,14 +26,20 @@ GitHub Release tarball (no registry credentials needed):
 ```jsonc
 {
   "dependencies": {
-    "@angel-studios/uuid-effect": "https://github.com/Angel-Studios/effect-bun-tooling/releases/download/v0.1.0/angel-studios-uuid-effect-0.1.0.tgz"
+    "@angel-studios/uuid-effect": "https://github.com/Angel-Studios/effect-bun-tooling/releases/download/v0.1.1/angel-studios-uuid-effect-0.1.1.tgz"
   }
 }
 ```
 
+Both specifier forms resolve under `bun install` and `pnpm install`; the tarball form needs
+no registry account, so it is the path that works before `npm login` has happened.
+
 `effect` is a **peer** dependency of every package here. It is never bundled and never
 declared as a runtime dependency, because a second copy of `effect` in a consumer's tree
 gives `Context.Tag` a second identity and services stop resolving.
+
+Each package's `exports` is an explicit subpath map rather than a `./*` wildcard, so a module
+the map does not name is not reachable from a consumer.
 
 ## Versioning
 

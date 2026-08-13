@@ -58,7 +58,7 @@ jobs:
 
       - name: rehearse the registry publish
         run: |
-          for tarball in dist-tarballs/*.tgz; do
+          for tarball in ./dist-tarballs/*.tgz; do
             npm publish "$tarball" --access public --dry-run
           done
 
