@@ -1,8 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-const SPECIFIER =
-  /(?:^|[\s;])(?:import|export)[\s\S]{0,200}?from\s*['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]/g;
+const transpiler = new Bun.Transpiler({ loader: 'ts' });
 
 export const typeScriptFiles = (dir: string): readonly string[] => {
   const found: string[] = [];
@@ -14,20 +13,32 @@ export const typeScriptFiles = (dir: string): readonly string[] => {
   return found;
 };
 
-export const packageNameOf = (specifier: string): string => {
+const packageNameOf = (specifier: string): string => {
   const segments = specifier.split('/');
-  return specifier.startsWith('@') ? segments.slice(0, 2).join('/') : segments[0];
+  return specifier.startsWith('@') ? segments.slice(0, 2).join('/') : (segments[0] ?? specifier);
 };
+
+const isBare = (specifier: string): boolean =>
+  !specifier.startsWith('.') &&
+  !specifier.startsWith('/') &&
+  !specifier.startsWith('node:') &&
+  !specifier.startsWith('bun:');
+
+const TYPE_ONLY_STATEMENT = /(?:import|export)\s+type\b[\s\S]*?\bfrom\s*['"]([^'"]+)['"]/g;
+
+const typeOnlySpecifiers = (source: string): readonly string[] =>
+  [...source.matchAll(TYPE_ONLY_STATEMENT)].flatMap((match) => (match[1] === undefined ? [] : [match[1]]));
 
 export const bareImportsOf = (files: readonly string[]): ReadonlySet<string> => {
   const bare = new Set<string>();
   for (const file of files) {
-    for (const match of readFileSync(file, 'utf8').matchAll(SPECIFIER)) {
-      const specifier = match[1] ?? match[2];
-      if (specifier === undefined) continue;
-      if (specifier.startsWith('.') || specifier.startsWith('node:') || specifier.startsWith('bun:'))
-        continue;
-      bare.add(packageNameOf(specifier));
+    const source = readFileSync(file, 'utf8');
+    const specifiers = [
+      ...transpiler.scanImports(source).map((record) => record.path),
+      ...typeOnlySpecifiers(source),
+    ];
+    for (const specifier of specifiers) {
+      if (isBare(specifier)) bare.add(packageNameOf(specifier));
     }
   }
   return bare;
