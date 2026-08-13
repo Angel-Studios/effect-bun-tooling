@@ -34,7 +34,13 @@
     "test:unit:once": "bun test"
   },
   "peerDependencies": {
+    "@types/node": ">=22",
     "effect": "^3.22.1"
+  },
+  "peerDependenciesMeta": {
+    "@types/node": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/bun": "catalog:",
