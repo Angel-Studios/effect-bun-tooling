@@ -3,6 +3,12 @@ name: release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: the existing vX.Y.Z tag to release
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -11,8 +17,13 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - name: check out the tag being released, which a workflow_dispatch does not do by default
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
 
       - uses: pnpm/action-setup@v4
         with:
@@ -30,7 +41,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: the tag must name the version every manifest carries
-        run: bun scripts/assert-tag-version.ts "${GITHUB_REF_NAME}"
+        run: bun scripts/assert-tag-version.ts "${RELEASE_TAG}"
 
       - name: dod
         run: pnpm run dod
@@ -38,14 +49,20 @@ jobs:
       - name: pack every publishable package
         run: bun scripts/pack-workspace.ts
 
-      - name: attach the tarballs to a GitHub Release
+      - name: create the GitHub Release only when the tag does not already have one
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "${GITHUB_REF_NAME}" \
-            --generate-notes \
-            ./dist-tarballs/*.tgz
+          gh release view "${RELEASE_TAG}" >/dev/null 2>&1 \
+            || gh release create "${RELEASE_TAG}" \
+              --title "${RELEASE_TAG}" \
+              --generate-notes
+
+      - name: attach the tarballs to the Release, replacing anything an earlier run uploaded
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${RELEASE_TAG}" ./dist-tarballs/*.tgz --clobber
 
       - name: publish to the npm registry, or rehearse when no credential is present
         env:
