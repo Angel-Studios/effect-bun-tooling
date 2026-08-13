@@ -2,7 +2,7 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { repoRoot, workspacePackages } from './workspace';
+import { repoRoot, withVersion, workspacePackages } from './workspace';
 
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
@@ -13,10 +13,11 @@ if (requested === undefined || !SEMVER.test(requested)) {
 }
 
 const rewriteVersion = (manifestPath: string, version: string): void => {
-  const source = readFileSync(manifestPath, 'utf8');
-  const rewritten = source.replace(/^(\s*)"version": "[^"]*"/m, `$1"version": "${version}"`);
-  if (rewritten === source) throw new Error(`${manifestPath} has no top-level version field to rewrite`);
-  writeFileSync(manifestPath, rewritten);
+  try {
+    writeFileSync(manifestPath, withVersion(readFileSync(manifestPath, 'utf8'), version));
+  } catch (cause) {
+    throw new Error(`${manifestPath}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+  }
 };
 
 const targets = [join(repoRoot, 'package.json'), ...workspacePackages().map((pkg) => pkg.manifestPath)];

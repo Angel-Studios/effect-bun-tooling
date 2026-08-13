@@ -66,5 +66,12 @@ export const pnpmCatalog = (root: string = repoRoot): Catalog => {
   return catalog as Catalog;
 };
 
+const VERSION_FIELD = /^(\s*)"version": "[^"]*"/m;
+
+export const withVersion = (source: string, version: string): string => {
+  if (!VERSION_FIELD.test(source)) throw new Error('manifest has no top-level version field to rewrite');
+  return source.replace(VERSION_FIELD, `$1"version": "${version}"`);
+};
+
 export const tarballName = (manifest: Manifest): string =>
   `${manifest.name.replace('@', '').replace('/', '-')}-${manifest.version}.tgz`;

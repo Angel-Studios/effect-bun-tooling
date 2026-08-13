@@ -18,11 +18,14 @@ const packageNameOf = (specifier: string): string => {
   return specifier.startsWith('@') ? segments.slice(0, 2).join('/') : (segments[0] ?? specifier);
 };
 
+const RUNTIME_BUILTINS: ReadonlySet<string> = new Set(['bun']);
+
 const isBare = (specifier: string): boolean =>
   !specifier.startsWith('.') &&
   !specifier.startsWith('/') &&
   !specifier.startsWith('node:') &&
-  !specifier.startsWith('bun:');
+  !specifier.startsWith('bun:') &&
+  !RUNTIME_BUILTINS.has(specifier);
 
 const TYPE_ONLY_STATEMENT = /(?:import|export)\s+type\b[\s\S]*?\bfrom\s*['"]([^'"]+)['"]/g;
 

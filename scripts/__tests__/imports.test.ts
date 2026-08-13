@@ -52,4 +52,14 @@ describe('bare import extraction', () => {
       "import { x } from './local';\nimport { readFileSync } from 'node:fs';\nimport { it } from 'bun:test';\nexport const all = [x, readFileSync, it];\n";
     expect([...bareImportsOf(withSource('ignored', source))]).toEqual([]);
   });
+
+  it('ignores the bare `bun` module, which the runtime provides and no consumer installs', () => {
+    const source = "import { plugin } from 'bun';\nexport const registered = plugin;\n";
+    expect([...bareImportsOf(withSource('bun-builtin', source))]).toEqual([]);
+  });
+
+  it('still sees a package whose name merely starts with bun', () => {
+    const source = "import { x } from 'bundle-thing';\nexport const used = x;\n";
+    expect([...bareImportsOf(withSource('bun-prefix', source))]).toEqual(['bundle-thing']);
+  });
 });
