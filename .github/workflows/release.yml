@@ -1,0 +1,64 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: the tag must name the version every manifest carries
+        run: bun scripts/assert-tag-version.ts "${GITHUB_REF_NAME}"
+
+      - name: dod
+        run: pnpm run dod
+
+      - name: pack every publishable package
+        run: bun scripts/pack-workspace.ts
+
+      - name: attach the tarballs to a GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            dist-tarballs/*.tgz
+
+      - name: publish to the npm registry, or rehearse when no credential is present
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "NPM_TOKEN absent: rehearsing the publish, releasing the tarballs only"
+            for tarball in dist-tarballs/*.tgz; do
+              npm publish "$tarball" --access public --dry-run
+            done
+            exit 0
+          fi
+          for tarball in dist-tarballs/*.tgz; do
+            npm publish "$tarball" --access public
+          done

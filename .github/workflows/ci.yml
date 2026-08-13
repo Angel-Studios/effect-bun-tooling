@@ -1,0 +1,68 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dod:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: tsc
+        run: pnpm run tsc
+
+      - name: test
+        run: pnpm run test:unit:once
+
+      - name: biome
+        run: pnpm run check:ci
+
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: pack every publishable package
+        run: bun scripts/pack-workspace.ts
+
+      - name: rehearse the registry publish
+        run: |
+          for tarball in dist-tarballs/*.tgz; do
+            npm publish "$tarball" --access public --dry-run
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tarballs
+          path: dist-tarballs/*.tgz

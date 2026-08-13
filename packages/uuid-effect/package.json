@@ -1,0 +1,41 @@
+{
+  "name": "@angel-studios/uuid-effect",
+  "version": "0.1.0",
+  "description": "Effect-native UUID service: crypto-entropy UUIDs injected through Effect context (mockable in tests, no PRNG downgrade)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Angel-Studios/effect-bun-tooling.git",
+    "directory": "packages/uuid-effect"
+  },
+  "homepage": "https://github.com/Angel-Studios/effect-bun-tooling/tree/main/packages/uuid-effect",
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "bun": ">=1.3.12"
+  },
+  "scripts": {
+    "tsc": "tsc --noEmit",
+    "check": "biome check src/ __tests__/",
+    "test:unit:once": "bun test"
+  },
+  "peerDependencies": {
+    "effect": "^3.22.1"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "effect": "catalog:",
+    "typescript": "catalog:"
+  }
+}
