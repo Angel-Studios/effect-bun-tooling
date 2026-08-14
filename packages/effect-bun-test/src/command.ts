@@ -74,7 +74,7 @@ const makeProcess = (
   [CommandExecutor.ProcessTypeId]: CommandExecutor.ProcessTypeId,
   pid: CommandExecutor.ProcessId(result.pid ?? 1),
   exitCode: settle.pipe(
-    Effect.zipRight(Ref.set(running, false)),
+    Effect.andThen(Ref.set(running, false)),
     Effect.as(CommandExecutor.ExitCode(result.exitCode ?? 0)),
   ),
   isRunning: Ref.get(running),
