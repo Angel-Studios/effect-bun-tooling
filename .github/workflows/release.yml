@@ -12,7 +12,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   release:
@@ -32,7 +31,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -63,19 +61,3 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${RELEASE_TAG}" ./dist-tarballs/*.tgz --clobber
-
-      - name: publish to the npm registry, or rehearse when no credential is present
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: true
-        run: |
-          if [ -z "${NODE_AUTH_TOKEN}" ]; then
-            echo "NPM_TOKEN absent: rehearsing the publish, releasing the tarballs only"
-            for tarball in ./dist-tarballs/*.tgz; do
-              npm publish "$tarball" --access public --dry-run
-            done
-            exit 0
-          fi
-          for tarball in ./dist-tarballs/*.tgz; do
-            npm publish "$tarball" --access public
-          done

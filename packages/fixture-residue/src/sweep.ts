@@ -64,6 +64,8 @@ export type ResidueEntry = {
   readonly verdict: EntryVerdict;
 };
 
+export type ReapFailure = { readonly path: string; readonly message: string };
+
 export type SweepResult = {
   readonly base: string;
 
@@ -71,6 +73,8 @@ export type SweepResult = {
 
   readonly residue: readonly ResidueEntry[];
   readonly reaped: readonly string[];
+
+  readonly reapFailures?: readonly ReapFailure[];
 
   readonly liveOwned: number;
 
@@ -82,18 +86,26 @@ export const emptySweep = (base: string, baseResolved: boolean): SweepResult => 
   baseResolved,
   residue: [],
   reaped: [],
+  reapFailures: [],
   liveOwned: 0,
   unjudgeable: 0,
 });
+
+const removeRecursively = (path: string): void => {
+  rmSync(path, { recursive: true, force: true });
+};
 
 export const sweepFixtureResidue = (opts: {
   readonly reap: boolean;
   readonly now?: number;
 
   readonly base: string;
+
+  readonly remove?: (path: string) => void;
 }): SweepResult => {
   const now = opts.now ?? Date.now();
   const base = opts.base;
+  const remove = opts.remove ?? removeRecursively;
   let names: readonly string[];
   try {
     names = readdirSync(base);
@@ -103,6 +115,7 @@ export const sweepFixtureResidue = (opts: {
   }
   const residue: ResidueEntry[] = [];
   const reaped: string[] = [];
+  const reapFailures: ReapFailure[] = [];
   let liveOwned = 0;
   let unjudgeable = 0;
   for (const name of names) {
@@ -119,12 +132,14 @@ export const sweepFixtureResidue = (opts: {
     residue.push({ name, path, verdict });
     if (opts.reap) {
       try {
-        rmSync(path, { recursive: true, force: true });
+        remove(path);
         reaped.push(path);
-      } catch {}
+      } catch (e) {
+        reapFailures.push({ path, message: e instanceof Error ? e.message : String(e) });
+      }
     }
   }
-  return { base, baseResolved: true, residue, reaped, liveOwned, unjudgeable };
+  return { base, baseResolved: true, residue, reaped, reapFailures, liveOwned, unjudgeable };
 };
 
 export const renderResidue = (result: SweepResult): string => {
@@ -142,10 +157,17 @@ export const renderResidue = (result: SweepResult): string => {
     "  Fix the owning suite's disposal; deleting these by hand hides the defect and it returns.",
   ];
   for (const e of result.residue) lines.push(`  - ${e.name}  [${e.verdict}]`);
+  for (const failure of result.reapFailures ?? []) {
+    lines.push(`  ! REAP FAILED, so this one is STILL THERE: ${failure.path}: ${failure.message}`);
+  }
   return lines.join('\n');
 };
 
-export const renderSweepLine = (result: SweepResult): string =>
-  `fixtures: base=${result.base === '' ? '<unresolved>' : result.base} resolved=${String(result.baseResolved)} ` +
-  `liveOwned=${result.liveOwned} unjudgeable=${result.unjudgeable} residue=${result.residue.length} ` +
-  `reaped=${result.reaped.length}`;
+export const renderSweepLine = (result: SweepResult): string => {
+  const failed = (result.reapFailures ?? []).length;
+  return (
+    `fixtures: base=${result.base === '' ? '<unresolved>' : result.base} resolved=${String(result.baseResolved)} ` +
+    `liveOwned=${result.liveOwned} unjudgeable=${result.unjudgeable} residue=${result.residue.length} ` +
+    `reaped=${result.reaped.length}${failed === 0 ? '' : ` reapFailed=${failed}`}`
+  );
+};

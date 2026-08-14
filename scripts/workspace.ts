@@ -7,7 +7,6 @@ export type Manifest = {
   readonly name: string;
   readonly version: string;
   readonly private?: boolean;
-  readonly publishConfig?: { readonly access?: string };
 };
 
 export type WorkspacePackage = {
@@ -66,11 +65,63 @@ export const pnpmCatalog = (root: string = repoRoot): Catalog => {
   return catalog as Catalog;
 };
 
-const VERSION_FIELD = /^(\s*)"version": "[^"]*"/m;
+type Span = { readonly start: number; readonly end: number };
+
+const WHITESPACE = /\s/;
+
+const endOfJsonString = (source: string, open: number): number => {
+  for (let i = open + 1; i < source.length; i += 1) {
+    if (source[i] === '\\') {
+      i += 1;
+      continue;
+    }
+    if (source[i] === '"') return i;
+  }
+  throw new Error('manifest contains an unterminated JSON string');
+};
+
+const skipWhitespace = (source: string, from: number): number => {
+  let i = from;
+  while (i < source.length && WHITESPACE.test(source[i] ?? '')) i += 1;
+  return i;
+};
+
+const topLevelStringValueSpan = (source: string, key: string): Span | undefined => {
+  let depth = 0;
+  let i = 0;
+  while (i < source.length) {
+    const ch = source[i];
+    if (ch === '"') {
+      const close = endOfJsonString(source, i);
+      const colon = skipWhitespace(source, close + 1);
+      if (depth === 1 && source[colon] === ':' && source.slice(i + 1, close) === key) {
+        const valueStart = skipWhitespace(source, colon + 1);
+        if (source[valueStart] !== '"') return undefined;
+        return { start: valueStart + 1, end: endOfJsonString(source, valueStart) };
+      }
+      i = close + 1;
+      continue;
+    }
+    if (ch === '{' || ch === '[') depth += 1;
+    else if (ch === '}' || ch === ']') depth -= 1;
+    i += 1;
+  }
+  return undefined;
+};
 
 export const withVersion = (source: string, version: string): string => {
-  if (!VERSION_FIELD.test(source)) throw new Error('manifest has no top-level version field to rewrite');
-  return source.replace(VERSION_FIELD, `$1"version": "${version}"`);
+  const declared = (JSON.parse(source) as { version?: unknown }).version;
+  if (typeof declared !== 'string') throw new Error('manifest has no top-level version field to rewrite');
+
+  const span = topLevelStringValueSpan(source, 'version');
+  if (span === undefined || source.slice(span.start, span.end) !== declared) {
+    throw new Error(
+      `manifest has a top-level version field ${JSON.stringify(declared)} that could not be located in ` +
+        `the source text, so no top-level version field can be rewritten without risking the wrong key`,
+    );
+  }
+
+  return `${source.slice(0, span.start)}${version}${source.slice(span.end)}`;
 };
 
 export const tarballName = (manifest: Manifest): string =>

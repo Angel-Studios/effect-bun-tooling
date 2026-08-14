@@ -9,7 +9,8 @@ type Workflow = { readonly jobs?: Readonly<Record<string, Job>> };
 
 const WORKFLOWS = ['ci.yml', 'release.yml'];
 
-const PUBLISH_INVOCATION = /npm publish\s+("?)([^\s"]+)\1/g;
+const REGISTRY_INVOCATION = /\b(?:npm|pnpm|bun|yarn)\s+publish\b/;
+const RELEASE_UPLOAD = /gh release upload\s+"?\$\{?RELEASE_TAG\}?"?\s+(\S+)/;
 
 const runScripts = (workflow: string): readonly string[] => {
   const parsed = Bun.YAML.parse(
@@ -20,37 +21,31 @@ const runScripts = (workflow: string): readonly string[] => {
   );
 };
 
-const publishArguments = (workflow: string): readonly string[] =>
-  runScripts(workflow).flatMap((script) => [...script.matchAll(PUBLISH_INVOCATION)].map((match) => match[2]));
-
-describe('npm publish is never handed a bare relative path', () => {
-  it('finds the publish invocations it is meant to guard', () => {
-    const found = WORKFLOWS.flatMap((workflow) => publishArguments(workflow));
-    expect(found.length).toBeGreaterThan(0);
+describe('distribution is a GitHub Release tarball, and no workflow publishes to a registry', () => {
+  it('parses a run script out of every workflow, so the scan below is not vacuous', () => {
+    for (const workflow of WORKFLOWS) {
+      expect({ workflow, steps: runScripts(workflow).length > 0 }).toEqual({ workflow, steps: true });
+    }
   });
 
   for (const workflow of WORKFLOWS) {
-    it(`passes every ${workflow} publish target as an explicit path, so npm cannot read it as a git spec`, () => {
-      for (const argument of publishArguments(workflow)) {
-        const explicit = argument.startsWith('./') || argument.startsWith('/') || argument.startsWith('$');
-        expect({ workflow, argument, explicit }).toEqual({ workflow, argument, explicit: true });
+    it(`runs no package-manager publish anywhere in ${workflow}, dry-run rehearsals included`, () => {
+      for (const script of runScripts(workflow)) {
+        expect({ workflow, script, publishes: REGISTRY_INVOCATION.test(script) }).toEqual({
+          workflow,
+          script,
+          publishes: false,
+        });
       }
     });
   }
 
-  it('iterates a ./-anchored glob wherever it loops over tarballs', () => {
-    for (const workflow of WORKFLOWS) {
-      for (const script of runScripts(workflow)) {
-        for (const match of script.matchAll(/for \w+ in (\S+)/g)) {
-          const glob = match[1];
-          if (!glob.includes('.tgz')) continue;
-          expect({ workflow, glob, anchored: glob.startsWith('./') || glob.startsWith('/') }).toEqual({
-            workflow,
-            glob,
-            anchored: true,
-          });
-        }
-      }
-    }
+  it('uploads every packed tarball to the Release from a ./-anchored glob, which is the whole distribution path', () => {
+    const uploads = runScripts('release.yml').flatMap((script) => {
+      const match = RELEASE_UPLOAD.exec(script);
+      return match?.[1] === undefined ? [] : [match[1]];
+    });
+
+    expect(uploads).toEqual(['./dist-tarballs/*.tgz']);
   });
 });

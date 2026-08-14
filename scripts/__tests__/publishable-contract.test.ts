@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { bareImportsOf, typeScriptFiles } from '../imports';
 import { publishablePackages, readManifest, repoRoot, workspacePackages } from '../workspace';
@@ -10,7 +10,7 @@ type PublishManifest = {
   readonly name: string;
   readonly version: string;
   readonly license?: string;
-  readonly publishConfig?: { readonly access?: string; readonly registry?: string };
+  readonly publishConfig?: Readonly<Record<string, unknown>>;
   readonly repository?: { readonly type?: string; readonly url?: string; readonly directory?: string };
   readonly files?: readonly string[];
   readonly exports?: Readonly<Record<string, string>>;
@@ -45,8 +45,8 @@ describe('publishable package contract', () => {
         expect(manifest.name.startsWith(PUBLISHED_SCOPE)).toBe(true);
       });
 
-      it('declares public registry access', () => {
-        expect(manifest.publishConfig).toEqual({ access: 'public', registry: 'https://registry.npmjs.org/' });
+      it('arms no registry publish, because @packages is not an ownable scope and distribution is by tarball', () => {
+        expect(manifest.publishConfig).toBeUndefined();
       });
 
       it('declares the MIT license and a directory-scoped repository', () => {
@@ -131,6 +131,33 @@ describe('publishable package contract', () => {
   it('extracts bare imports from shipped source, so the two import gates above are not vacuous', () => {
     const across = packages.flatMap((pkg) => [...bareImportsOf(typeScriptFiles(join(pkg.dir, 'src')))]);
     expect(across).toContain('effect');
+  });
+});
+
+describe('the registry arm stays disarmed', () => {
+  it('carries no publishConfig in any manifest, the root one included', () => {
+    const manifestPaths = [
+      join(repoRoot, 'package.json'),
+      ...workspacePackages().map((pkg) => pkg.manifestPath),
+    ];
+    for (const manifestPath of manifestPaths) {
+      expect({ manifestPath, publishConfig: publishManifest(manifestPath).publishConfig }).toEqual({
+        manifestPath,
+        publishConfig: undefined,
+      });
+    }
+  });
+
+  it('points no .npmrc at a registry, since nothing here publishes to one', () => {
+    const npmrc = join(repoRoot, '.npmrc');
+    if (!existsSync(npmrc)) return;
+    for (const line of readFileSync(npmrc, 'utf8').split('\n')) {
+      const key = line.split('=')[0]?.trim() ?? '';
+      expect({
+        line,
+        registryKey: key === 'registry' || key === 'access' || key.endsWith(':registry'),
+      }).toEqual({ line, registryKey: false });
+    }
   });
 });
 

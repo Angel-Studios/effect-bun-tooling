@@ -56,11 +56,8 @@ jobs:
       - name: pack every publishable package
         run: bun scripts/pack-workspace.ts
 
-      - name: rehearse the registry publish
-        run: |
-          for tarball in ./dist-tarballs/*.tgz; do
-            npm publish "$tarball" --access public --dry-run
-          done
+      - name: prove a consumer resolves the packed tarballs with no lockfile, and inspect the archives
+        run: pnpm run test:e2e
 
       - uses: actions/upload-artifact@v4
         with:

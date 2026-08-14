@@ -9,6 +9,7 @@ import {
   HOST,
   isOwnerAlive,
   parseFixtureOwner,
+  type ReapFailure,
   type ResidueEntry,
   renderResidue,
   renderSweepLine,
@@ -17,7 +18,7 @@ import {
   sweepFixtureResidue as sweepFixtureResidueAt,
 } from '@packages/fixture-residue/sweep';
 
-export type { EntryVerdict, FixtureOwner, ResidueEntry, SweepResult };
+export type { EntryVerdict, FixtureOwner, ReapFailure, ResidueEntry, SweepResult };
 
 export {
   classifyEntry,
@@ -28,13 +29,23 @@ export {
   renderSweepLine,
 };
 
-let repoRootMemo: string | undefined;
-export const repoRoot = (): string => {
-  if (repoRootMemo !== undefined) return repoRootMemo;
-  let dir = import.meta.dir;
+const PATH_SEGMENT = /[\\/]/;
+
+const isInsideNodeModules = (dir: string): boolean => dir.split(PATH_SEGMENT).includes('node_modules');
+
+export const resolveRepoRootFrom = (startDir: string): string => {
+  let dir = startDir;
   for (;;) {
     if (existsSync(join(dir, 'pnpm-workspace.yaml')) || existsSync(join(dir, '.git'))) {
-      repoRootMemo = dir;
+      if (isInsideNodeModules(dir)) {
+        throw new Error(
+          `fixture-root: the repo-root marker walk from ${startDir} stopped at ${dir}, which is INSIDE a ` +
+            `'node_modules' directory. That happens when an INSTALLED copy of a package carries a ` +
+            `'pnpm-workspace.yaml' or '.git' entry of its own, and it would mint every fixture inside a ` +
+            `dependency instead of inside the consuming repo — silently, in every suite at once. ` +
+            `Remove that marker from the packaged files rather than working around this.`,
+        );
+      }
       return dir;
     }
     const parent = dirname(dir);
@@ -42,10 +53,16 @@ export const repoRoot = (): string => {
     dir = parent;
   }
   throw new Error(
-    `fixture-root: could not locate the repo root by walking up from ${import.meta.dir}; expected a ` +
+    `fixture-root: could not locate the repo root by walking up from ${startDir}; expected a ` +
       `'pnpm-workspace.yaml' or '.git' marker in some ancestor. Fixtures MUST live inside the repo ` +
       `(hard invariant I-1), so there is deliberately no out-of-repo fallback.`,
   );
+};
+
+let repoRootMemo: string | undefined;
+export const repoRoot = (): string => {
+  repoRootMemo ??= resolveRepoRootFrom(import.meta.dir);
+  return repoRootMemo;
 };
 
 export const fixtureBase = (): string => {

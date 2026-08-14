@@ -10,6 +10,7 @@
     "includes": [
       "packages/**/*.ts",
       "scripts/**/*.ts",
+      "__e2e__/**/*.ts",
       "!**/node_modules",
       "!**/dist",
       "!**/dist-tarballs",

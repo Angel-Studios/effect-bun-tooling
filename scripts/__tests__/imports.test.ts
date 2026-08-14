@@ -1,11 +1,17 @@
-import { describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { makeFixtureRoot } from '../fixture-root';
 import { bareImportsOf, typeScriptFiles } from '../imports';
-import { fixtureRoot } from './fixture-root';
+
+const fixtures = makeFixtureRoot('imports');
+
+afterAll(() => {
+  fixtures.dispose();
+});
 
 const withSource = (label: string, source: string): readonly string[] => {
-  const dir = join(fixtureRoot(), label);
+  const dir = join(fixtures.path(), label);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'subject.ts'), source);
   return typeScriptFiles(dir);

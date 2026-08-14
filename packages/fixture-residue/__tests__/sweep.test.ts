@@ -15,6 +15,7 @@ import {
 import { ownedName, scratchDir } from './fixture-base';
 
 const UNREACHABLE_PID = 2147483647;
+const INIT_PID = 1;
 const GRACE_MS = 60_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -76,6 +77,10 @@ describe('isOwnerAlive', () => {
 
   it('reports a pid no process can hold as dead', () => {
     expect(isOwnerAlive(UNREACHABLE_PID)).toBe(false);
+  });
+
+  it('treats a live process it may not signal as alive, because EPERM is not ESRCH', () => {
+    expect(isOwnerAlive(INIT_PID)).toBe(true);
   });
 });
 
@@ -143,6 +148,57 @@ describe('sweepFixtureResidue', () => {
     expect(existsSync(live.path)).toBe(true);
   });
 
+  it('leaves a freshly stranded dead-owner entry alone, because a crashing owner may still be recovering', () => {
+    const base = scratchDir('sweep-grace');
+    const fresh = place(base, ownedName('fresh', UNREACHABLE_PID));
+
+    const result = sweepFixtureResidue({ reap: true, base, now: fresh.mtimeMs + GRACE_MS });
+
+    expect(result.residue).toEqual([]);
+    expect(result.reaped).toEqual([]);
+    expect(result.liveOwned).toBe(1);
+    expect(existsSync(fresh.path)).toBe(true);
+  });
+
+  it('reaps that same entry one millisecond past the grace window, so the case above is a boundary not a hole', () => {
+    const base = scratchDir('sweep-grace-past');
+    const fresh = place(base, ownedName('fresh', UNREACHABLE_PID));
+
+    const result = sweepFixtureResidue({ reap: true, base, now: fresh.mtimeMs + GRACE_MS + 1 });
+
+    expect(result.residue.map((r) => r.name)).toEqual([fresh.name]);
+    expect(result.reaped).toEqual([fresh.path]);
+    expect(existsSync(fresh.path)).toBe(false);
+  });
+
+  it('reports a reap that failed instead of swallowing it, because the directory is still there', () => {
+    const base = scratchDir('sweep-reap-failure');
+    const stale = place(base, ownedName('stale', UNREACHABLE_PID));
+
+    const result = sweepFixtureResidue({
+      reap: true,
+      base,
+      now: stale.mtimeMs + GRACE_MS + 1,
+      remove: () => {
+        throw new Error('EACCES: permission denied');
+      },
+    });
+
+    expect(result.residue.map((r) => r.name)).toEqual([stale.name]);
+    expect(result.reaped).toEqual([]);
+    expect(result.reapFailures).toEqual([{ path: stale.path, message: 'EACCES: permission denied' }]);
+    expect(existsSync(stale.path)).toBe(true);
+  });
+
+  it('records no reap failure on the ordinary path, so the field is not always populated', () => {
+    const base = scratchDir('sweep-reap-clean');
+    const stale = place(base, ownedName('stale', UNREACHABLE_PID));
+
+    const result = sweepFixtureResidue({ reap: true, base, now: stale.mtimeMs + GRACE_MS + 1 });
+
+    expect(result.reapFailures).toEqual([]);
+  });
+
   it('reports an absent base as resolved-and-empty rather than as a failure', () => {
     const result = sweepFixtureResidue({ reap: false, base: join(scratchDir('absent'), 'never-made') });
 
@@ -171,6 +227,51 @@ describe('rendering', () => {
     expect(rendered).toContain('residue tripwire FAILED');
     expect(rendered).toContain(stale.name);
     expect(rendered).toContain('deleting these by hand hides the defect');
+  });
+
+  it('says which directory the reaper failed to remove, so a failed cleanup is not silent', () => {
+    const base = scratchDir('render-reap-failure');
+    const stale = place(base, ownedName('stale', UNREACHABLE_PID));
+
+    const rendered = renderResidue(
+      sweepFixtureResidue({
+        reap: true,
+        base,
+        now: stale.mtimeMs + GRACE_MS + 1,
+        remove: () => {
+          throw new Error('EACCES: permission denied');
+        },
+      }),
+    );
+
+    expect(rendered).toContain('REAP FAILED');
+    expect(rendered).toContain(stale.path);
+    expect(rendered).toContain('EACCES: permission denied');
+  });
+
+  it('counts failed reaps on the summary line only when there are any, so the clean shape is unchanged', () => {
+    const clean = renderSweepLine({
+      base: '/somewhere/.test-fixtures',
+      baseResolved: true,
+      residue: [],
+      reaped: [],
+      reapFailures: [],
+      liveOwned: 0,
+      unjudgeable: 0,
+    });
+
+    const failed = renderSweepLine({
+      base: '/somewhere/.test-fixtures',
+      baseResolved: true,
+      residue: [{ name: 'a', path: '/somewhere/.test-fixtures/a', verdict: 'dead-owner' }],
+      reaped: [],
+      reapFailures: [{ path: '/somewhere/.test-fixtures/a', message: 'EACCES' }],
+      liveOwned: 0,
+      unjudgeable: 0,
+    });
+
+    expect(clean.endsWith('reaped=0')).toBe(true);
+    expect(failed.endsWith('reaped=0 reapFailed=1')).toBe(true);
   });
 
   it('distinguishes an unresolvable base from a clean one, because they are not the same result', () => {

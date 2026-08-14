@@ -23,18 +23,13 @@
     "README.md",
     "LICENSE"
   ],
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org/"
-  },
   "engines": {
     "bun": ">=1.3.12"
   },
   "scripts": {
     "tsc": "tsc --noEmit",
     "check": "biome check src/ __test__/",
-    "test:unit:once": "bun test",
-    "test:unit:coverage:ci": "bun test --coverage"
+    "test:unit:once": "bun test"
   },
   "dependencies": {
     "@happy-dom/global-registrator": "20.9.0",

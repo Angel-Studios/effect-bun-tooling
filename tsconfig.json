@@ -16,7 +16,8 @@
     ]
   },
   "include": [
-    "scripts"
+    "scripts",
+    "__e2e__"
   ],
   "exclude": [
     "node_modules",
