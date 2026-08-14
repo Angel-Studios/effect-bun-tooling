@@ -1,6 +1,6 @@
 {
   "name": "@packages/bun-svelte-test",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Bun.plugin Svelte 5 compiler loader plus a happy-dom preload for bun test. Lets `bun test` compile and mount .svelte components and .svelte.ts runes modules, retiring the vitest carve-out that existed solely because bun has no native .svelte loader.",
   "license": "MIT",
   "repository": {
