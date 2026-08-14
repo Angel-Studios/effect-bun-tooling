@@ -47,6 +47,9 @@ jobs:
       - name: pack every publishable package
         run: bun scripts/pack-workspace.ts
 
+      - name: prove a consumer resolves these tarballs, and inspect the archives, before any upload
+        run: pnpm run test:e2e
+
       - name: create the GitHub Release only when the tag does not already have one
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

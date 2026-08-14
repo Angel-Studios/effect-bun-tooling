@@ -148,16 +148,9 @@ describe('the registry arm stays disarmed', () => {
     }
   });
 
-  it('points no .npmrc at a registry, since nothing here publishes to one', () => {
+  it('carries no .npmrc at all, since nothing here authenticates to or publishes to a registry', () => {
     const npmrc = join(repoRoot, '.npmrc');
-    if (!existsSync(npmrc)) return;
-    for (const line of readFileSync(npmrc, 'utf8').split('\n')) {
-      const key = line.split('=')[0]?.trim() ?? '';
-      expect({
-        line,
-        registryKey: key === 'registry' || key === 'access' || key.endsWith(':registry'),
-      }).toEqual({ line, registryKey: false });
-    }
+    expect({ npmrc, present: existsSync(npmrc) }).toEqual({ npmrc, present: false });
   });
 });
 
