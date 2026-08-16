@@ -3,9 +3,8 @@ import type * as Duration from 'effect/Duration';
 import type * as Effect from 'effect/Effect';
 import type * as Layer from 'effect/Layer';
 import type * as Scope from 'effect/Scope';
-import type * as TestServices from 'effect/TestServices';
 import * as internal from './internal/internal';
-import type { API, Methods, MethodsNonLive, Tester } from './types';
+import type { API, Methods, MethodsNonLive, Tester, TestServices } from './types';
 
 export type {
   API,
@@ -19,6 +18,7 @@ export type {
   Tester,
   TestFunction,
   TestOptions,
+  TestServices,
 } from './types';
 
 export const afterAll = bt.afterAll;
@@ -45,9 +45,9 @@ export const test = bt.test;
 
 export const addEqualityTesters: () => void = internal.addEqualityTesters;
 
-export const effect: Tester<TestServices.TestServices> = internal.effect;
+export const effect: Tester<TestServices> = internal.effect;
 
-export const scoped: Tester<TestServices.TestServices | Scope.Scope> = internal.scoped;
+export const scoped: Tester<TestServices | Scope.Scope> = internal.scoped;
 
 export const live: Tester<never> = internal.live;
 
@@ -57,7 +57,7 @@ export const layer: <R, E, const ExcludeTestServices extends boolean = false>(
   layer_: Layer.Layer<R, E>,
   options?: {
     readonly memoMap?: Layer.MemoMap;
-    readonly timeout?: Duration.DurationInput;
+    readonly timeout?: Duration.Input;
     readonly excludeTestServices?: ExcludeTestServices;
   },
 ) => {
@@ -67,7 +67,7 @@ export const layer: <R, E, const ExcludeTestServices extends boolean = false>(
 
 export const flakyTest: <A, E, R>(
   self: Effect.Effect<A, E, R>,
-  timeout?: Duration.DurationInput,
+  timeout?: Duration.Input,
 ) => Effect.Effect<A, never, R> = internal.flakyTest;
 
 export const prop: Methods['prop'] = internal.prop;

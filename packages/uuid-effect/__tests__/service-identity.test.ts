@@ -11,10 +11,9 @@ describe('Uuid context key', () => {
   });
 
   it('resolves a layer provided under an independently declared tag carrying the same key', () => {
-    class Restated extends Context.Tag(MIGRATION_STABLE_KEY)<
-      Restated,
-      { readonly next: Effect.Effect<string> }
-    >() {}
+    class Restated extends Context.Service<Restated, { readonly next: Effect.Effect<string> }>()(
+      MIGRATION_STABLE_KEY,
+    ) {}
     const viaRestated = Effect.runSync(
       Effect.provide(
         Effect.flatMap(Restated, (s) => s.next),

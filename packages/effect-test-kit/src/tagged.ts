@@ -1,4 +1,4 @@
-import { Cause, Either, Exit, Inspectable, Option } from 'effect';
+import { Cause, Exit, Inspectable, Option, Result } from 'effect';
 
 export type TaggedValue = { readonly _tag: string };
 
@@ -43,7 +43,7 @@ export function expectCauseFailureTag<E extends TaggedValue, const Tag extends E
   cause: Cause.Cause<E>,
   tag: Tag,
 ): Tagged<E, Tag> {
-  const failure = Cause.failureOption(cause);
+  const failure = Cause.findErrorOption(cause);
   if (Option.isNone(failure)) {
     throw new Error(
       `expectCauseFailureTag: expected a failure tagged "${tag}", but the Cause carried no ` +
@@ -54,14 +54,14 @@ export function expectCauseFailureTag<E extends TaggedValue, const Tag extends E
 }
 
 export function expectLeftTag<R, L extends TaggedValue, const Tag extends L['_tag']>(
-  either: Either.Either<R, L>,
+  result: Result.Result<R, L>,
   tag: Tag,
 ): Tagged<L, Tag> {
-  if (Either.isRight(either)) {
+  if (Result.isSuccess(result)) {
     throw new Error(
-      `expectLeftTag: expected a Left tagged "${tag}", but received a Right.\n` +
-        `Right value:\n${render(either.right)}`,
+      `expectLeftTag: expected a Failure tagged "${tag}", but received a Success.\n` +
+        `Success value:\n${render(result.success)}`,
     );
   }
-  return expectTag(either.left, tag);
+  return expectTag(result.failure, tag);
 }

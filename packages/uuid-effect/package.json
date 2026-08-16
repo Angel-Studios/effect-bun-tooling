@@ -30,7 +30,7 @@
     "test:unit:once": "bun test --coverage"
   },
   "peerDependencies": {
-    "effect": "^3.22.1"
+    "effect": "4.0.0-rc.109"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
