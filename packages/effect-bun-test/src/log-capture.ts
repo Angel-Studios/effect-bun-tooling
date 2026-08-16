@@ -1,4 +1,4 @@
-import { Effect, Layer, Logger, LogLevel } from 'effect';
+import { Effect, Layer, Logger, type LogLevel, References } from 'effect';
 
 export type CapturedLog = {
   readonly level: string;
@@ -72,7 +72,8 @@ export type LogCapture = {
 };
 
 const LEAVE_AMBIENT_LOG_LEVEL = null;
-const DEFAULT_MINIMUM_LOG_LEVEL = LogLevel.Debug;
+// v4 models `LogLevel` as a string union rather than a set of tagged objects.
+const DEFAULT_MINIMUM_LOG_LEVEL: LogLevel.LogLevel = 'Debug';
 
 type MinimumLogLevel = LogLevel.LogLevel | typeof LEAVE_AMBIENT_LOG_LEVEL;
 
@@ -82,14 +83,36 @@ export type LogCaptureOptions = {
 };
 
 const withMinimumLogLevel = (base: Layer.Layer<never>, level: MinimumLogLevel): Layer.Layer<never> =>
-  level === LEAVE_AMBIENT_LOG_LEVEL ? base : Layer.merge(base, Logger.minimumLogLevel(level));
+  level === LEAVE_AMBIENT_LOG_LEVEL
+    ? base
+    : // v4 replaced `Logger.minimumLogLevel` with the `MinimumLogLevel` reference.
+      Layer.merge(base, Layer.succeed(References.MinimumLogLevel, level));
+
+const replaceDefaultLogger = (logger: Logger.Logger<unknown, void>): Layer.Layer<never> =>
+  Layer.effect(
+    References.CurrentLoggers,
+    Effect.map(References.CurrentLoggers, (ambient) => {
+      const next = new Set(ambient);
+      next.delete(Logger.defaultLogger);
+      next.add(logger);
+      return next;
+    }),
+  );
 
 export const makeLogCapture = (options: LogCaptureOptions = {}): LogCapture => {
   const entries: CapturedLog[] = [];
   const logger = Logger.make(({ logLevel, message }) => {
-    entries.push({ level: logLevel.label, message: renderLogMessage(message), raw: message });
+    entries.push({ level: logLevel, message: renderLogMessage(message), raw: message });
   });
-  const base = options.mode === 'add' ? Logger.add(logger) : Logger.replace(Logger.defaultLogger, logger);
+  // v4 removed `Logger.add` / `Logger.replace`. `add` maps cleanly onto
+  // `mergeWithExisting`, but `replace` does not: `Logger.layer([logger])` would
+  // install *only* the capture, dropping the ambient `tracerLogger` that
+  // forwards logs onto spans. v3's `Logger.replace` swapped one logger for
+  // another, so the swap is done over the ambient set to preserve that.
+  const base =
+    options.mode === 'add'
+      ? Logger.layer([logger], { mergeWithExisting: true })
+      : replaceDefaultLogger(logger);
   const level = options.minimumLogLevel === undefined ? DEFAULT_MINIMUM_LOG_LEVEL : options.minimumLogLevel;
   const layer = withMinimumLogLevel(base, level);
   const messages = () => entries.map((e) => e.message);

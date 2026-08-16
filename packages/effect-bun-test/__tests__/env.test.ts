@@ -18,11 +18,12 @@ const taggedDefect = (exit: Exit.Exit<unknown, unknown>): ConflictShape => {
   if (Exit.isSuccess(exit)) {
     throw new Error(`Expected a defect, but the Effect SUCCEEDED with: ${String(exit.value)}`);
   }
-  const die = Cause.dieOption(exit.cause);
-  if (Option.isNone(die)) {
+  // v4 flattened `Cause`; defects are read off the `reasons` array.
+  const dies = exit.cause.reasons.filter(Cause.isDieReason);
+  if (dies.length === 0) {
     throw new Error(`Expected a defect, but the Cause carried none.\n${Cause.pretty(exit.cause)}`);
   }
-  const value = die.value;
+  const value = dies[0].defect;
   if (typeof value !== 'object' || value === null || !('_tag' in value)) {
     throw new Error(`Expected a TAGGED defect, but got: ${String(value)}`);
   }
@@ -39,26 +40,30 @@ const taggedDefect = (exit: Exit.Exit<unknown, unknown>): ConflictShape => {
   };
 };
 
-const configErrorOp = (exit: Exit.Exit<unknown, unknown>): string => {
+// v4 rebuilt `Config` on `Schema`: a failed read is a `ConfigError` wrapping a
+// `SchemaError` rather than a value carrying the v3 `_op: "MissingData"` tag.
+// The assertion that still carries the original intent — the read FAILED, and
+// the error names the key it could not resolve — is over the rendered message.
+const configErrorMessage = (exit: Exit.Exit<unknown, unknown>): string => {
   if (Exit.isSuccess(exit)) {
     throw new Error(`Expected the Config read to FAIL, but it produced: ${String(exit.value)}`);
   }
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (Option.isNone(failure)) {
     throw new Error(`Expected a typed ConfigError failure.\n${Cause.pretty(exit.cause)}`);
   }
   const value = failure.value;
-  if (typeof value !== 'object' || value === null || !('_op' in value)) {
-    throw new Error(`Expected a ConfigError carrying _op, but got: ${String(value)}`);
+  if (typeof value !== 'object' || value === null || !('_tag' in value) || value._tag !== 'ConfigError') {
+    throw new Error(`Expected a ConfigError, but got: ${String(value)}`);
   }
-  return String(value._op);
+  return String(value);
 };
 
 describe('testConfigLayer', () => {
   it.effect('code reading Effect Config sees the mapped values', () =>
     Effect.gen(function* () {
       const host = yield* Config.string('HOST');
-      const port = yield* Config.integer('PORT');
+      const port = yield* Config.int('PORT');
       expect(host).toBe('example.test');
       expect(port).toBe(8080);
     }).pipe(Effect.provide(testConfigLayer({ HOST: 'example.test', PORT: '8080' }))),
@@ -68,7 +73,7 @@ describe('testConfigLayer', () => {
     Effect.gen(function* () {
       const exit = yield* Effect.exit(Config.string('NOT_IN_THE_MAP'));
 
-      expect(configErrorOp(exit)).toBe('MissingData');
+      expect(configErrorMessage(exit)).toContain('NOT_IN_THE_MAP');
     }).pipe(Effect.provide(testConfigLayer({ SOMETHING_ELSE: 'x' }))),
   );
 
@@ -82,7 +87,7 @@ describe('testConfigLayer', () => {
       const exit = yield* Effect.exit(Config.string(key)).pipe(
         Effect.provide(testConfigLayer({ UNRELATED: 'x' })),
       );
-      expect(configErrorOp(exit)).toBe('MissingData');
+      expect(configErrorMessage(exit)).toContain(key);
     }),
   );
 
@@ -96,17 +101,20 @@ describe('testConfigLayer', () => {
     }),
   );
 
-  it.effect('nested paths join with "." — NOT the "_" the JSDoc advertises', () =>
+  // Effect v4 changed this: v3's `ConfigProvider.fromMap` joined nested path
+  // segments with "."; the v4 env-record provider joins them with "_", matching
+  // ordinary environment-variable naming.
+  it.effect('nested paths join with "_", the environment-variable convention', () =>
     Effect.gen(function* () {
       const nested = Config.nested(Config.string('HOST'), 'DB');
 
-      const dotted = yield* nested.pipe(Effect.provide(testConfigLayer({ 'DB.HOST': 'db.example.test' })));
-      expect(dotted).toBe('db.example.test');
+      const underscored = yield* nested.pipe(Effect.provide(testConfigLayer({ DB_HOST: 'db.example.test' })));
+      expect(underscored).toBe('db.example.test');
 
-      const underscored = yield* Effect.exit(nested).pipe(
-        Effect.provide(testConfigLayer({ DB_HOST: 'db.example.test' })),
+      const dotted = yield* Effect.exit(nested).pipe(
+        Effect.provide(testConfigLayer({ 'DB.HOST': 'db.example.test' })),
       );
-      expect(configErrorOp(underscored)).toBe('MissingData');
+      expect(configErrorMessage(dotted)).toContain('HOST');
     }),
   );
 });
@@ -174,7 +182,7 @@ describe('withTestEnv', () => {
 
       expect(Exit.isFailure(exit)).toBe(true);
       expect(
-        Option.getOrUndefined(Exit.isFailure(exit) ? Cause.failureOption(exit.cause) : Option.none()),
+        Option.getOrUndefined(Exit.isFailure(exit) ? Cause.findErrorOption(exit.cause) : Option.none()),
       ).toBe('deliberate');
       expect(key in process.env).toBe(false);
     }),
@@ -183,8 +191,8 @@ describe('withTestEnv', () => {
   it.effect('restores when the fiber is INTERRUPTED', () =>
     Effect.gen(function* () {
       const key = freshKey('RESTORE_ON_INTERRUPT');
-      const fiber = yield* Effect.fork(Effect.never.pipe(withTestEnv({ [key]: 'held' })));
-      yield* Effect.yieldNow();
+      const fiber = yield* Effect.forkChild(Effect.never.pipe(withTestEnv({ [key]: 'held' })));
+      yield* Effect.yieldNow;
       expect(process.env[key]).toBe('held');
 
       yield* Fiber.interrupt(fiber);

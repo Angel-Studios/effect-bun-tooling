@@ -17,7 +17,7 @@ expect(err.elapsedMs).toBeGreaterThan(0);
 | `expectTag(value, tag)` | A tagged value in hand. |
 | `expectFailureTag(exit, tag)` | An `Exit`'s typed failure. |
 | `expectCauseFailureTag(cause, tag)` | A `Cause`'s typed failure. |
-| `expectLeftTag(either, tag)` | An `Either`'s `Left`. |
+| `expectLeftTag(result, tag)` | A `Result`'s `Failure`. (Named for v3's `Either`, which v4 renamed to `Result`.) |
 
 Each returns the narrowed member, so the call site keeps full type information on the specific
 error without asserting its way there.
@@ -34,8 +34,8 @@ of them **cannot** silently pass.
 
 ## The one case they cannot narrow
 
-Effect `Config` failures. Every `ConfigError` carries the `_tag` `'ConfigError'`, with the real
-discriminant on `_op`, so `expectFailureTag(exit, 'MissingData')` will not match. Match on `_op`, or
-assert the rendered message.
+Effect `Config` failures. Every `ConfigError` carries the `_tag` `'ConfigError'`, so the tag alone
+discriminates nothing. Under Effect v4 a `ConfigError` wraps a `SchemaError` rather than carrying
+v3's `_op`, so assert the rendered message.
 
 `effect` is a peer dependency; it resolves from the consumer's tree so there is exactly one copy.

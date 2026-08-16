@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { Cause, Data, Effect, Either, Exit, Schema } from 'effect';
+import { Cause, Data, Effect, Exit, Result, Schema } from 'effect';
 import { expectCauseFailureTag, expectFailureTag, expectLeftTag, expectTag } from '../src/tagged';
 
 class FooError extends Data.TaggedError('FooError')<{ readonly foo: string }> {}
@@ -73,13 +73,13 @@ describe('expectCauseFailureTag', () => {
 });
 
 describe('expectLeftTag', () => {
-  it('narrows the Left of an Either', () => {
-    const left: Either.Either<number, FooError> = Either.left(new FooError({ foo: 'lz' }));
-    expect(expectLeftTag(left, 'FooError').foo).toBe('lz');
+  it('narrows the Failure of a Result', () => {
+    const failure: Result.Result<number, FooError> = Result.fail(new FooError({ foo: 'lz' }));
+    expect(expectLeftTag(failure, 'FooError').foo).toBe('lz');
   });
 
-  it('throws when the Either is a Right', () => {
-    const right: Either.Either<number, FooError> = Either.right(9);
-    expect(() => expectLeftTag(right, 'FooError')).toThrow(/received a Right/);
+  it('throws when the Result is a Success', () => {
+    const success: Result.Result<number, FooError> = Result.succeed(9);
+    expect(() => expectLeftTag(success, 'FooError')).toThrow(/received a Success/);
   });
 });

@@ -8,7 +8,7 @@ and execute the TypeScript directly under Bun.
 
 | Package | Purpose |
 |---|---|
-| `@packages/effect-bun-test` | Effect-native test harness over `bun:test`: `it.effect` / `it.scoped` / `it.live` / `layer()`, virtual time via Effect's TestContext, scripted subprocesses, in-repo fixture roots, tagged-error assertions. |
+| `@packages/effect-bun-test` | Effect-native test harness over `bun:test`: `it.effect` / `it.scoped` / `it.live` / `layer()`, virtual time via Effect's TestClock, scripted subprocesses, in-repo fixture roots, tagged-error assertions. |
 | `@packages/fixture-residue` | The fixture-residue convention: the `.test-fixtures` directory name, the `<label>--<host>--<pid>--<random>` ownership token, owner liveness, entry classification, the sweep and its rendering. Node builtins only. |
 | `@packages/bun-svelte-test` | Bun loader that compiles `.svelte` under `bun test`, plus a component-mount helper. |
 | `@packages/effect-test-kit` | Assertions over Effect exits and tagged errors. |
@@ -44,13 +44,20 @@ exercise that dimension.
 
 `effect` is a **peer** dependency of every package here. It is never bundled and never
 declared as a runtime dependency, because a second copy of `effect` in a consumer's tree
-gives `Context.Tag` a second identity and services stop resolving.
+gives `Context.Service` a second identity and services stop resolving.
 
-That peer is declared `^3.22.1`, which does **not** admit `4.x`. A consumer moving to Effect v4
-therefore needs a new release of these packages with widened ranges; because they ship as frozen
-tarballs pinned by URL, the harness cannot be bumped in place along with the consumer's own
-sources. The v4-deleted spellings have already been retired from this source where the v3
-replacement exists, so the remaining work at that point is the range, not the code.
+That peer is declared as the exact pin `4.0.0-rc.109`, not a range. Effect v4 is still a release
+candidate — `latest` on npm remains `3.x` — and npm range semantics do not admit prereleases the
+way they admit stable versions (`^4.0.0` matches no `4.0.0-rc.*`), so a range here would be either
+inert or a standing invitation for the next RC to break the harness. When v4 ships stable the pin
+widens to `^4.0.0`.
+
+These packages therefore require Effect **v4** and no longer resolve against `3.x`. A consumer
+still on v3 stays on the `v0.2.1` tarballs, which keep working because they are pinned by URL.
+
+`@effect/platform` is **no longer a peer dependency at all**. v4 folded it into core: `Command` and
+`CommandExecutor` became `effect/unstable/process`, and `@effect/platform/Error` became
+`effect/PlatformError`. There is no v4 release of `@effect/platform`, and none is needed.
 
 Each package's `exports` is an explicit subpath map rather than a `./*` wildcard, so a module
 the map does not name is not reachable from a consumer.

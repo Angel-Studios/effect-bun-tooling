@@ -1,4 +1,4 @@
-import { Effect, FiberRef, HashSet, Logger, LogLevel } from 'effect';
+import { Effect, Logger, References } from 'effect';
 import { describe, expect, it } from '../src/index';
 import { makeLogCapture, renderLogMessage } from '../src/log-capture';
 
@@ -132,7 +132,7 @@ describe('makeLogCapture — end-to-end through the real Effect logger', () => {
     Effect.gen(function* () {
       const cap = makeLogCapture();
       yield* Effect.logWarning('warn-here').pipe(Effect.provide(cap.layer));
-      expect(cap.entries[0]?.level).toBe('WARN');
+      expect(cap.entries[0]?.level).toBe('Warn');
       expect(cap.entries[0]?.message).toContain('warn-here');
     }),
   );
@@ -157,7 +157,7 @@ describe('makeLogCapture — end-to-end through the real Effect logger', () => {
 
   it.live('honours a raised minimumLogLevel', () =>
     Effect.gen(function* () {
-      const cap = makeLogCapture({ minimumLogLevel: LogLevel.Warning });
+      const cap = makeLogCapture({ minimumLogLevel: 'Warn' });
       yield* Effect.logDebug('suppressed').pipe(
         Effect.andThen(Effect.logWarning('kept')),
         Effect.provide(cap.layer),
@@ -184,24 +184,24 @@ describe('makeLogCapture — end-to-end through the real Effect logger', () => {
   it.live("the default `mode: 'replace'` swaps the default logger out", () =>
     Effect.gen(function* () {
       const cap = makeLogCapture();
-      const ambient = yield* FiberRef.get(FiberRef.currentLoggers);
-      expect(HashSet.has(ambient, Logger.defaultLogger)).toBe(true);
+      const ambient = yield* References.CurrentLoggers;
+      expect(ambient.has(Logger.defaultLogger)).toBe(true);
 
-      const installed = yield* FiberRef.get(FiberRef.currentLoggers).pipe(Effect.provide(cap.layer));
-      expect(HashSet.has(installed, Logger.defaultLogger)).toBe(false);
-      expect(HashSet.size(installed)).toBe(HashSet.size(ambient));
+      const installed = yield* References.CurrentLoggers.pipe(Effect.provide(cap.layer));
+      expect(installed.has(Logger.defaultLogger)).toBe(false);
+      expect(installed.size).toBe(ambient.size);
     }),
   );
 
   it.live("`mode: 'add'` keeps the default logger installed and appends the capture", () =>
     Effect.gen(function* () {
       const cap = makeLogCapture({ mode: 'add' });
-      const ambient = yield* FiberRef.get(FiberRef.currentLoggers);
-      expect(HashSet.has(ambient, Logger.defaultLogger)).toBe(true);
+      const ambient = yield* References.CurrentLoggers;
+      expect(ambient.has(Logger.defaultLogger)).toBe(true);
 
-      const installed = yield* FiberRef.get(FiberRef.currentLoggers).pipe(Effect.provide(cap.layer));
-      expect(HashSet.has(installed, Logger.defaultLogger)).toBe(true);
-      expect(HashSet.size(installed)).toBe(HashSet.size(ambient) + 1);
+      const installed = yield* References.CurrentLoggers.pipe(Effect.provide(cap.layer));
+      expect(installed.has(Logger.defaultLogger)).toBe(true);
+      expect(installed.size).toBe(ambient.size + 1);
 
       yield* Effect.logInfo('appended').pipe(Effect.provide(cap.layer));
       expect(cap.text()).toContain('appended');

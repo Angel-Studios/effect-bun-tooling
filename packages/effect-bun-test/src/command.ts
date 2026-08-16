@@ -1,16 +1,15 @@
-import type * as Command from '@effect/platform/Command';
-import * as CommandExecutor from '@effect/platform/CommandExecutor';
-import * as PlatformError from '@effect/platform/Error';
 import * as Data from 'effect/Data';
 import type * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
-import { NodeInspectSymbol } from 'effect/Inspectable';
 import * as Layer from 'effect/Layer';
+import * as PlatformError from 'effect/PlatformError';
 import * as Ref from 'effect/Ref';
 import type * as Scope from 'effect/Scope';
 import * as Sink from 'effect/Sink';
 import * as Stream from 'effect/Stream';
+import type * as Command from 'effect/unstable/process/ChildProcess';
+import * as ChildProcessSpawner from 'effect/unstable/process/ChildProcessSpawner';
 
 const encoder = new TextEncoder();
 
@@ -32,7 +31,7 @@ export type TestProcessResult = {
 
   readonly stderr?: string | Uint8Array | Stream.Stream<Uint8Array, PlatformError.PlatformError>;
 
-  readonly delay?: Duration.DurationInput;
+  readonly delay?: Duration.Input;
 
   readonly pid?: number;
 };
@@ -66,34 +65,38 @@ const resolveScript = (
     return Effect.isEffect(resolved) ? resolved : Effect.succeed(resolved);
   });
 
+// v4 folded `@effect/platform`'s CommandExecutor into core as
+// `effect/unstable/process`: `Process` became `ChildProcessHandle`, built via
+// `makeHandle` rather than by stamping a TypeId onto an object literal. The
+// handle also gained `all`, `getInputFd`, `getOutputFd`, and `unref`, which this
+// double satisfies with inert implementations.
 const makeProcess = (
   result: TestProcessResult,
   running: Ref.Ref<boolean>,
   settle: Effect.Effect<void>,
-): CommandExecutor.Process => ({
-  [CommandExecutor.ProcessTypeId]: CommandExecutor.ProcessTypeId,
-  pid: CommandExecutor.ProcessId(result.pid ?? 1),
-  exitCode: settle.pipe(
-    Effect.andThen(Ref.set(running, false)),
-    Effect.as(CommandExecutor.ExitCode(result.exitCode ?? 0)),
-  ),
-  isRunning: Ref.get(running),
-  kill: () => Ref.set(running, false),
-  stdout: Stream.unwrap(Effect.as(settle, toByteStream(result.stdout))),
-  stderr: Stream.unwrap(Effect.as(settle, toByteStream(result.stderr))),
-  stdin: Sink.drain,
-  toJSON: () => ({ _id: 'TestProcess', pid: result.pid ?? 1, exitCode: result.exitCode ?? 0 }),
-  toString: () => `TestProcess(pid=${result.pid ?? 1}, exitCode=${result.exitCode ?? 0})`,
-  [NodeInspectSymbol]: () => ({
-    _id: 'TestProcess',
-    pid: result.pid ?? 1,
-    exitCode: result.exitCode ?? 0,
-  }),
-});
+): ChildProcessSpawner.ChildProcessHandle =>
+  ChildProcessSpawner.makeHandle({
+    pid: ChildProcessSpawner.ProcessId(result.pid ?? 1),
+    exitCode: settle.pipe(
+      Effect.andThen(Ref.set(running, false)),
+      Effect.as(ChildProcessSpawner.ExitCode(result.exitCode ?? 0)),
+    ),
+    isRunning: Ref.get(running),
+    kill: () => Ref.set(running, false),
+    stdin: Sink.drain,
+    stdout: Stream.unwrap(Effect.as(settle, toByteStream(result.stdout))),
+    stderr: Stream.unwrap(Effect.as(settle, toByteStream(result.stderr))),
+    all: Stream.unwrap(
+      Effect.as(settle, Stream.concat(toByteStream(result.stdout), toByteStream(result.stderr))),
+    ),
+    getInputFd: () => Sink.drain,
+    getOutputFd: () => Stream.empty,
+    unref: Effect.succeed(Effect.void),
+  });
 
 const startProcess = (
   result: TestProcessResult,
-): Effect.Effect<CommandExecutor.Process, never, Scope.Scope> =>
+): Effect.Effect<ChildProcessSpawner.ChildProcessHandle, never, Scope.Scope> =>
   Effect.gen(function* () {
     const running = yield* Ref.make(true);
     const settle =
@@ -105,13 +108,13 @@ const start =
   (script: TestCommandScript) =>
   (
     command: Command.Command,
-  ): Effect.Effect<CommandExecutor.Process, PlatformError.PlatformError, Scope.Scope> =>
+  ): Effect.Effect<ChildProcessSpawner.ChildProcessHandle, PlatformError.PlatformError, Scope.Scope> =>
     Effect.flatMap(resolveScript(script, command), startProcess);
 
 export const TestCommandExecutor = (
   script: TestCommandScript,
-): Layer.Layer<CommandExecutor.CommandExecutor> =>
-  Layer.succeed(CommandExecutor.CommandExecutor, CommandExecutor.makeExecutor(start(script)));
+): Layer.Layer<ChildProcessSpawner.ChildProcessSpawner> =>
+  Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, ChildProcessSpawner.make(start(script)));
 
 export type ArgvMatcher = {
   readonly describe: string;
@@ -501,8 +504,10 @@ export const scopedScriptedProcess = (
     return builder;
   });
 
+// In v4 `BadArgument` is the *reason* carried by a `PlatformError` wrapper
+// rather than a `PlatformError` itself; `badArgument` builds the wrapper.
 const toPlatformError = (violation: ScriptedProcessViolation): PlatformError.PlatformError =>
-  new PlatformError.BadArgument({
+  PlatformError.badArgument({
     module: 'Command',
     method: 'start',
     description: violation.message,
@@ -513,7 +518,7 @@ const scriptedStart =
   (resolve: (argv: ReadonlyArray<string>) => Resolution) =>
   (
     command: Command.Command,
-  ): Effect.Effect<CommandExecutor.Process, PlatformError.PlatformError, Scope.Scope> =>
+  ): Effect.Effect<ChildProcessSpawner.ChildProcessHandle, PlatformError.PlatformError, Scope.Scope> =>
     Effect.suspend(() => {
       const resolution = resolve(commandArgv(command));
       if (resolution._tag === 'Rejected') {
@@ -526,18 +531,18 @@ const scriptedStart =
 export const ScriptedCommandExecutor = (
   expectations: ReadonlyArray<ScriptedExpectation>,
   options?: ScriptedProcessOptions,
-): Layer.Layer<CommandExecutor.CommandExecutor> =>
+): Layer.Layer<ChildProcessSpawner.ChildProcessSpawner> =>
   Layer.suspend(() => commandExecutorLayer(ScriptedProcess(expectations, options)));
 
 export const commandExecutorLayer = (
   builder: ScriptedProcessBuilder,
-): Layer.Layer<CommandExecutor.CommandExecutor> =>
-  Layer.scoped(
-    CommandExecutor.CommandExecutor,
+): Layer.Layer<ChildProcessSpawner.ChildProcessSpawner> =>
+  Layer.effect(
+    ChildProcessSpawner.ChildProcessSpawner,
     Effect.gen(function* () {
       const resolve = engines.get(builder);
       if (resolve === undefined) return yield* Effect.die(foreignBuilderError);
       yield* Effect.addFinalizer((exit) => verifyOnClose(builder, exit));
-      return CommandExecutor.makeExecutor(scriptedStart(resolve));
+      return ChildProcessSpawner.make(scriptedStart(resolve));
     }),
   );

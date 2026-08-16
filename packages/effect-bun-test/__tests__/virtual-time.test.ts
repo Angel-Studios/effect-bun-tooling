@@ -1,28 +1,31 @@
-import { Context, Effect, Fiber, Layer, Option, TestClock } from 'effect';
+import { Context, Effect, Fiber, Layer } from 'effect';
+import * as TestClock from 'effect/testing/TestClock';
 import { afterAll, describe, expect, it, layer } from '../src/index';
 
 describe('virtual time', () => {
   it.effect('ten virtual seconds of Effect.sleep advance the virtual clock by ten seconds', () =>
     Effect.gen(function* () {
-      const fiber = yield* Effect.fork(Effect.sleep('10 seconds'));
+      const fiber = yield* Effect.forkChild(Effect.sleep('10 seconds'));
       yield* TestClock.adjust('10 seconds');
       yield* Fiber.join(fiber);
 
-      const virtualElapsed = yield* TestClock.currentTimeMillis;
+      const virtualElapsed = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
       expect(virtualElapsed).toBeGreaterThanOrEqual(10_000);
     }),
   );
 
   it.effect('a sleep that is never adjusted past does NOT resolve', () =>
     Effect.gen(function* () {
-      const fiber = yield* Effect.fork(Effect.sleep('10 seconds'));
+      const fiber = yield* Effect.forkChild(Effect.sleep('10 seconds'));
 
       yield* TestClock.adjust('9 seconds');
-      expect(Option.isNone(yield* Fiber.poll(fiber))).toBe(true);
+      // v4 dropped `Fiber.poll`; `pollUnsafe` reads the exit synchronously,
+      // returning `undefined` while the fiber is still suspended.
+      expect(fiber.pollUnsafe()).toBeUndefined();
 
       yield* TestClock.adjust('1 second');
       yield* Fiber.join(fiber);
-      expect(Option.isSome(yield* Fiber.poll(fiber))).toBe(true);
+      expect(fiber.pollUnsafe()).toBeDefined();
     }),
   );
 
@@ -39,7 +42,7 @@ describe('virtual time', () => {
 
 let buildCount = 0;
 
-class Expensive extends Context.Tag('Expensive')<Expensive, { readonly serial: number }>() {}
+class Expensive extends Context.Service<Expensive, { readonly serial: number }>()('Expensive') {}
 
 const ExpensiveLive = Layer.effect(
   Expensive,

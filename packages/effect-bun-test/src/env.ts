@@ -1,10 +1,10 @@
 import * as ConfigProvider from 'effect/ConfigProvider';
 import * as Data from 'effect/Data';
 import * as Effect from 'effect/Effect';
-import * as Layer from 'effect/Layer';
+import type * as Layer from 'effect/Layer';
 
 export const testConfigLayer = (map: Record<string, string>): Layer.Layer<never> =>
-  Layer.setConfigProvider(ConfigProvider.fromMap(new Map(Object.entries(map))));
+  ConfigProvider.layer(ConfigProvider.fromEnvRecord(map));
 
 export class EnvScopeConflictError extends Data.TaggedError('EnvScopeConflictError')<{
   readonly key: string;

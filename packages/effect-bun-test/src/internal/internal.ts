@@ -1,11 +1,9 @@
 import { afterAll, beforeAll, describe, test } from 'bun:test';
-import * as Arbitrary from 'effect/Arbitrary';
 import * as Cause from 'effect/Cause';
 import * as Data from 'effect/Data';
 import * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
-import * as fc from 'effect/FastCheck';
 import * as Fiber from 'effect/Fiber';
 import { flow, identity } from 'effect/Function';
 import * as Layer from 'effect/Layer';
@@ -14,10 +12,12 @@ import { isObject } from 'effect/Predicate';
 import * as Schedule from 'effect/Schedule';
 import * as Schema from 'effect/Schema';
 import * as Scope from 'effect/Scope';
-import * as TestEnvironment from 'effect/TestContext';
-import type * as TestServices from 'effect/TestServices';
+import * as fc from 'effect/testing/FastCheck';
+import * as TestClock from 'effect/testing/TestClock';
 
 import type * as BunTest from '../types';
+
+type TestServices = BunTest.TestServices;
 
 type BunTestFn = (ctx?: never) => unknown;
 
@@ -110,7 +110,7 @@ const baseCollector = ((
 ): void => {
   const [opts, fn] = splitArgs(second, third);
 
-  const o = isObject(opts) ? opts : undefined;
+  const o = isObject(opts) ? (opts as BunTest.TestOptions) : undefined;
   if (o?.todo) {
     bunTest.todo(name, fn, toBunOptions(opts));
     return;
@@ -168,7 +168,7 @@ const makeForRegistrar =
       throw new TypeError(`it.for(...)("${name}") was called without a test function`);
     }
 
-    const o = isObject(opts) ? opts : undefined;
+    const o = isObject(opts) ? (opts as BunTest.TestOptions) : undefined;
     const cased = bunTest.each(cases);
     const register =
       o?.todo === true
@@ -221,19 +221,19 @@ export const defaultApi: DefaultApi = makeDefaultApi();
 type RunOutcome<A> =
   | { readonly _tag: 'Success'; readonly value: A }
   | { readonly _tag: 'Interrupted' }
-  | { readonly _tag: 'Failed'; readonly error: Cause.PrettyError };
+  | { readonly _tag: 'Failed'; readonly error: Error };
 
 const runPromise =
   (ctx?: TestContextInternal) =>
   async <A, E>(effect: Effect.Effect<A, E>): Promise<A> => {
     const toOutcome: Effect.Effect<RunOutcome<A>> = Effect.gen(function* () {
-      const exitFiber = yield* effect.pipe(Effect.exit, Effect.fork);
+      const exitFiber = yield* effect.pipe(Effect.exit, Effect.forkChild);
 
       const exit = yield* Fiber.join(exitFiber);
       if (Exit.isSuccess(exit)) {
         return { _tag: 'Success', value: exit.value } as const;
       }
-      if (Cause.isInterruptedOnly(exit.cause)) {
+      if (Cause.hasInterruptsOnly(exit.cause)) {
         return { _tag: 'Interrupted' } as const;
       }
       const errors = Cause.prettyErrors(exit.cause);
@@ -262,7 +262,16 @@ const runTest =
   <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
     runPromise(ctx)(effect);
 
-const TestEnv = TestEnvironment.TestContext.pipe(Layer.provide(Logger.remove(Logger.defaultLogger)));
+/**
+ * The services an `it.effect` test runs on.
+ *
+ * v3 shipped this as `TestContext.TestContext`; v4 removed both `TestContext`
+ * and `TestServices`, so the harness composes it: the virtual-time `TestClock`,
+ * with the default logger silenced so a passing test prints nothing. `Logger`
+ * is now a set-valued `Context.Reference`, so an empty logger list replaces
+ * v3's `Logger.remove(Logger.defaultLogger)`.
+ */
+const TestEnv: Layer.Layer<TestServices> = Layer.provideMerge(TestClock.layer(), Logger.layer([]));
 
 export const addEqualityTesters = () => {};
 
@@ -274,14 +283,19 @@ type VariadicProperty = (...args: Array<unknown>) => fc.IPropertyWithHooks<Array
 const asyncPropertyVariadic = fc.asyncProperty as unknown as VariadicAsyncProperty;
 const propertyVariadic = fc.property as unknown as VariadicProperty;
 
-const toArbitrary = (arbitrary: Schema.Schema.Any | AnyArbitrary): AnyArbitrary =>
-  Schema.isSchema(arbitrary) ? Arbitrary.make(arbitrary) : arbitrary;
+// v4 removed the standalone `Arbitrary` module; schema-derived arbitraries now
+// come from `Schema.toArbitrary`, which returns a factory taking the FastCheck
+// namespace rather than a ready-made arbitrary.
+const toArbitrary = (arbitrary: Schema.Constraint | AnyArbitrary): AnyArbitrary =>
+  Schema.isSchema(arbitrary)
+    ? (Schema.toArbitrary(arbitrary)(fc) as AnyArbitrary)
+    : (arbitrary as AnyArbitrary);
 
-const toArbitraryList = (arbitraries: ReadonlyArray<Schema.Schema.Any | AnyArbitrary>): Array<AnyArbitrary> =>
+const toArbitraryList = (arbitraries: ReadonlyArray<Schema.Constraint | AnyArbitrary>): Array<AnyArbitrary> =>
   arbitraries.map(toArbitrary);
 
 const toArbitraryRecord = (
-  arbitraries: Readonly<Record<string, Schema.Schema.Any | AnyArbitrary>>,
+  arbitraries: Readonly<Record<string, Schema.Constraint | AnyArbitrary>>,
 ): Record<string, AnyArbitrary> => {
   const result: Record<string, AnyArbitrary> = {};
   for (const key of Object.keys(arbitraries)) {
@@ -291,14 +305,14 @@ const toArbitraryRecord = (
 };
 
 const fastCheckParams = <Ts>(timeout: unknown): fc.Parameters<Ts> =>
-  isObject(timeout) && 'fastCheck' in timeout ? (timeout.fastCheck as fc.Parameters<Ts>) : {};
+  isObject(timeout) && 'fastCheck' in timeout ? (timeout['fastCheck'] as fc.Parameters<Ts>) : {};
 
 const toTestOptions = (
   timeout: number | (BunTest.TestOptions & { fastCheck?: unknown }) | undefined,
 ): number | BunTest.TestOptions | undefined => timeout;
 
-type ArbitraryList = ReadonlyArray<Schema.Schema.Any | AnyArbitrary>;
-type ArbitraryRecord = Readonly<Record<string, Schema.Schema.Any | AnyArbitrary>>;
+type ArbitraryList = ReadonlyArray<Schema.Constraint | AnyArbitrary>;
+type ArbitraryRecord = Readonly<Record<string, Schema.Constraint | AnyArbitrary>>;
 
 const makeTester = <R>(
   mapEffect: <A, E>(self: Effect.Effect<A, E, R>) => Effect.Effect<A, E, never>,
@@ -413,7 +427,7 @@ export const layer =
     layer_: Layer.Layer<R, E>,
     options?: {
       readonly memoMap?: Layer.MemoMap;
-      readonly timeout?: Duration.DurationInput;
+      readonly timeout?: Duration.Input;
       readonly excludeTestServices?: ExcludeTestServices;
     },
   ): {
@@ -427,12 +441,15 @@ export const layer =
   ) => {
     const excludeTestServices = options?.excludeTestServices ?? false;
     const withTestEnv = excludeTestServices
-      ? (layer_ as Layer.Layer<R | TestServices.TestServices, E>)
+      ? (layer_ as Layer.Layer<R | TestServices, E>)
       : Layer.provideMerge(layer_, TestEnv);
     const memoMap = options?.memoMap ?? Effect.runSync(Layer.makeMemoMap);
     const scope = Effect.runSync(Scope.make());
-    const runtimeEffect = Layer.toRuntimeWithMemoMap(withTestEnv, memoMap).pipe(
-      Scope.extend(scope),
+    // v4 removed `Runtime<R>` and `Layer.toRuntimeWithMemoMap`. The equivalent is
+    // to build the layer into a `Context<R>` against the same memo map and scope,
+    // then provide that context per test. `buildWithMemoMap` takes the scope
+    // directly, so v3's `Scope.extend` step is no longer needed.
+    const contextEffect = Layer.buildWithMemoMap(withTestEnv, memoMap, scope).pipe(
       Effect.orDie,
       Effect.cached,
       Effect.runSync,
@@ -440,26 +457,26 @@ export const layer =
 
     const makeIt = (it: BunTest.API): BunTest.MethodsNonLive<R, ExcludeTestServices> =>
       Object.assign(it, {
-        effect: makeTester<TestServices.TestServices | R>(
-          (effect) => Effect.flatMap(runtimeEffect, (runtime) => Effect.provide(effect, runtime)),
+        effect: makeTester<TestServices | R>(
+          (effect) => Effect.flatMap(contextEffect, (context) => Effect.provideContext(effect, context)),
           it,
         ),
         prop,
-        scoped: makeTester<TestServices.TestServices | Scope.Scope | R>(
+        scoped: makeTester<TestServices | Scope.Scope | R>(
           (effect) =>
-            Effect.flatMap(runtimeEffect, (runtime) => Effect.provide(Effect.scoped(effect), runtime)),
+            Effect.flatMap(contextEffect, (context) => Effect.provideContext(Effect.scoped(effect), context)),
           it,
         ),
         flakyTest,
         layer<R2, E2>(
           nestedLayer: Layer.Layer<R2, E2, R>,
-          nestedOptions?: { readonly timeout?: Duration.DurationInput },
+          nestedOptions?: { readonly timeout?: Duration.Input },
         ) {
           const merged = Layer.provideMerge(nestedLayer, withTestEnv) as unknown as Layer.Layer<
-            TestServices.TestServices | R | R2,
+            TestServices | R | R2,
             E | E2
           >;
-          return layer<TestServices.TestServices | R | R2, E | E2, ExcludeTestServices | false>(merged, {
+          return layer<TestServices | R | R2, E | E2, ExcludeTestServices | false>(merged, {
             ...nestedOptions,
             memoMap,
             excludeTestServices,
@@ -471,7 +488,7 @@ export const layer =
     const before = beforeAll as unknown as (fn: () => Promise<void>, timeout?: number) => void;
     const after = afterAll as unknown as (fn: () => Promise<void>, timeout?: number) => void;
 
-    const buildRuntime = runtimeEffect.pipe(Effect.exit, Effect.asVoid);
+    const buildRuntime = contextEffect.pipe(Effect.exit, Effect.asVoid);
     const closeScope = Scope.close(scope, Exit.void);
 
     if (args.length === 1) {
@@ -493,27 +510,21 @@ class FlakyTestDefect extends Data.TaggedError('FlakyTestDefect')<{
 
 export const flakyTest = <A, E, R>(
   self: Effect.Effect<A, E, R>,
-  timeout: Duration.DurationInput = Duration.seconds(30),
+  timeout: Duration.Input = Duration.seconds(30),
 ): Effect.Effect<A, never, R> =>
-  Effect.catchAllDefect(self, (defect) => Effect.fail(new FlakyTestDefect({ defect }))).pipe(
-    Effect.retry(
-      Schedule.recurs(10).pipe(
-        Schedule.compose(Schedule.elapsed),
-        Schedule.whileOutput(Duration.lessThanOrEqualTo(timeout)),
-      ),
-    ),
-    Effect.catchAll((error) =>
+  Effect.catchDefect(self, (defect) => Effect.fail(new FlakyTestDefect({ defect }))).pipe(
+    // v4 dropped `Schedule.compose` / `elapsed` / `whileOutput`; `upTo` expresses
+    // the same bound — retry up to 10 times, but stop once `timeout` has elapsed.
+    Effect.retry(Schedule.recurs(10).pipe(Schedule.upTo({ duration: timeout }))),
+    Effect.catch((error) =>
       error instanceof FlakyTestDefect ? Effect.die(error.defect) : Effect.die(error),
     ),
   );
 
 export const makeMethods = (it: BunTest.API): BunTest.Methods =>
   Object.assign(it, {
-    effect: makeTester<TestServices.TestServices>(Effect.provide(TestEnv), it),
-    scoped: makeTester<TestServices.TestServices | Scope.Scope>(
-      flow(Effect.scoped, Effect.provide(TestEnv)),
-      it,
-    ),
+    effect: makeTester<TestServices>(Effect.provide(TestEnv), it),
+    scoped: makeTester<TestServices | Scope.Scope>(flow(Effect.scoped, Effect.provide(TestEnv)), it),
     live: makeTester<never>(identity, it),
     scopedLive: makeTester<Scope.Scope>(Effect.scoped, it),
     flakyTest,

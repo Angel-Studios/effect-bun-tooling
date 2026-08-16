@@ -36,16 +36,9 @@
     "@packages/fixture-residue": "workspace:*"
   },
   "peerDependencies": {
-    "@effect/platform": "^0.97.1",
-    "effect": "^3.22.1"
-  },
-  "peerDependenciesMeta": {
-    "@effect/platform": {
-      "optional": true
-    }
+    "effect": "4.0.0-rc.109"
   },
   "devDependencies": {
-    "@effect/platform": "catalog:",
     "@types/bun": "catalog:",
     "effect": "catalog:",
     "typescript": "catalog:"

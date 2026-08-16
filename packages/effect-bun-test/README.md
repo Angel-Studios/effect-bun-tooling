@@ -6,7 +6,7 @@ construction with a `layer()` block that builds once.
 
 Two things it buys you:
 
-- **Virtual time.** `it.effect` runs on Effect's `TestContext`, so a test that models ten seconds
+- **Virtual time.** `it.effect` runs on Effect's `TestClock`, so a test that models ten seconds
   of elapsed time costs ~43ms of wall clock instead of ten seconds. See
   [Virtual time](#virtual-time-the-one-idiom) — there is exactly one correct idiom and it is not
   the obvious one.
@@ -17,13 +17,14 @@ Two things it buys you:
 
 This package is **vendored**, not depended on. It is adapted from
 [Effect-TS/effect PR #6236](https://github.com/Effect-TS/effect/pull/6236) (`@effect/bun-test`,
-head `3f8d6e8af20aff446b1b24c153b9ddaa165b89a6`), and pinned against `effect@3.22.1` and bun
+head `3f8d6e8af20aff446b1b24c153b9ddaa165b89a6`), and pinned against `effect@4.0.0-rc.109` and bun
 `1.3.14`.
 
 `fast-check` is **not** a declared dependency here: the property-based registrars reach it through
-`effect/FastCheck`, and `effect@3.22.x` depends on `fast-check@^3.23.1` itself — **v3, not v4**,
-because Effect's `Arbitrary.make` uses fast-check's v3 random-generator API (`mrng.nextArrayInt`),
-which v4 removed. Declaring a second copy here would risk two fast-checks in one tree.
+`effect/testing/FastCheck`, and `effect@4.x` depends on `fast-check@^4.9.0` itself. Declaring a
+second copy here would risk two fast-checks in one tree. (Under Effect v3 this module was
+`effect/FastCheck` and the pinned line was fast-check **v3**; v4 moved the re-export under
+`effect/testing` and moved onto fast-check v4.)
 
 The upstream-partnership posture applies: divergences and fixes are reported upstream on the PR,
 and if upstream merges we re-evaluate switching to the published package. Everything we changed is
@@ -44,7 +45,7 @@ So a test that waits on time must **fork the thing that sleeps**, advance the cl
 ```ts
 it.effect('retries three times over a minute', () =>
   Effect.gen(function* () {
-    const fiber = yield* Effect.fork(subjectUnderTest);   // fork the SLEEPER
+    const fiber = yield* Effect.forkChild(subjectUnderTest);  // fork the SLEEPER
     yield* TestClock.adjust('1 minute');                  // then advance
     const result = yield* Fiber.join(fiber);              // join supplies the sync
     expect(result).toEqual(...);
@@ -57,7 +58,7 @@ not-yet-registered sleep. If the adjust lands first, the later sleep registers a
 against an already-advanced clock and never wakes. It happens to pass when nothing async precedes
 the sleep and hangs deterministically as soon as anything does.
 
-An explicit `Effect.yieldNow()` before the adjust is **not** required (a forked one-hour sleep
+An explicit `Effect.yieldNow` before the adjust is **not** required (a forked one-hour sleep
 released in 17.4ms without one). Upstream's conformance suite includes one; we kept it there for
 diff fidelity only.
 
@@ -82,7 +83,7 @@ nothing pulls in a subsystem you are not using.
 
 | Export | What it does |
 |---|---|
-| `it.effect(name, fn, opts?)` | Runs an Effect on `TestContext` — **virtual clock**, annotations, sizing, test config. The default. Note `TestContext` installs no seeded `Random`, so random draws are still live and non-reproducible. |
+| `it.effect(name, fn, opts?)` | Runs an Effect on the `TestClock` — **virtual clock**. The default. The harness test environment installs no seeded `Random`, so random draws are still live and non-reproducible. |
 | `it.scoped(name, fn, opts?)` | `it.effect` + a `Scope`, closed after the test. |
 | `it.live(name, fn, opts?)` | Runs on the **real** clock and real services. Use only when real time is the point. |
 | `it.scopedLive(name, fn, opts?)` | `it.live` + a `Scope`. |
@@ -123,8 +124,8 @@ can never silently pass.
 > module has to earn it by adding behavior.
 
 **One case the family cannot narrow: Effect `Config` failures.** Every `ConfigError` carries the
-`_tag` `'ConfigError'`, with the real discriminant on `_op` — so `expectFailureTag(exit,
-'MissingData')` will not match. Match on `_op`, or assert the rendered message.
+`_tag` `'ConfigError'`, so the tag alone discriminates nothing. Under Effect v4 a `ConfigError`
+wraps a `SchemaError` rather than carrying v3's `_op`, so assert the rendered message.
 
 `@packages/effect-bun-test/utils` also ships upstream's `node:assert`-based vocabulary
 (`assertLeft`, `assertRight`, `assertSuccess`, `assertFailure`, `assertSome`, `assertNone`,
@@ -198,13 +199,13 @@ lifecycle; `fixtureDirAtBase(prefix)` returns a single directory.
 
 ### Scripted subprocesses — `@packages/effect-bun-test/command`
 
-Three surfaces over one matching engine. **Pick by what the subject already speaks** —
-`@effect/platform` is an optional peer dependency, so the executor surfaces install only for
-consumers that actually use them.
+Three surfaces over one matching engine. **Pick by what the subject already speaks.** Under Effect
+v4 these need no extra dependency: the subprocess API lives in core as
+`effect/unstable/process`, so `@effect/platform` is no longer involved.
 
 | Surface | Use when | Verifies? |
 |---|---|---|
-| **`ScriptedCommandExecutor(expectations, opts?)`** | Production code yields `CommandExecutor`. **This is the paved path.** | **Yes** — an unexpected spawn fails through the executor's own error channel, and unconsumed expectations fail the test from the layer's scope finalizer. |
+| **`ScriptedCommandExecutor(expectations, opts?)`** | Production code yields `ChildProcessSpawner`. **This is the paved path.** | **Yes** — an unexpected spawn fails through the executor's own error channel, and unconsumed expectations fail the test from the layer's scope finalizer. |
 | **`commandExecutorLayer(builder)`** | Same, but you need the builder in reach to assert against it. | **Yes** — same finalizer. |
 | **`TestCommandExecutor(script)`** | Stateless stubbing: answer each `Command` from a plain function. | **No.** |
 
@@ -213,12 +214,12 @@ verified on scope close** — it cannot tell you that an expected spawn never ha
 false-green this package exists to remove, so reach for `ScriptedCommandExecutor` unless you
 specifically want a stateless stub.
 
-For seams that are **not** `CommandExecutor`:
+For seams that are **not** `ChildProcessSpawner`:
 
 - **`ScriptedProcess(expectations, opts?)`** — a runner-agnostic fixture builder keyed by argv
   matcher, handing back minimal `Subprocess`-shaped fakes. It scripts processes; it does **not**
   define whose service consumes them. Repo-local spawn seams compose their own test layer on top of
-  it, behind their own existing `Context.Tag`.
+  it, behind their own existing `Context.Service`.
 - **`scopedScriptedProcess(expectations, opts?)`** — the same builder with verification wired to the
   enclosing scope. Prefer it.
 
@@ -254,10 +255,10 @@ need `2 x delay` of `TestClock.adjust` and would look like a hang.
 
 #### Why the fakes behave like the real executor
 
-The `CommandExecutor` surfaces implement **only `start`** and let `CommandExecutor.makeExecutor`
-derive `exitCode`, `string`, `lines`, `stream` and `streamLines`. So the fake behaves identically to
-the real executor by construction, instead of being five hand-written fakes that can drift from it
-independently. Copy that shape if you build a fixture for another `@effect/platform` service.
+The executor surfaces implement **only `spawn`** and let `ChildProcessSpawner.make` derive
+`exitCode`, `string`, `lines`, `stream` and `streamLines`. So the fake behaves identically to
+the real spawner by construction, instead of being five hand-written fakes that can drift from it
+independently. Copy that shape if you build a fixture for another core platform service.
 
 ## Upstream caveats (preserved deliberately, not shimmed)
 
@@ -339,6 +340,21 @@ most common conversion mistake, and its only symptom is a bare timeout.
 
 Every intentional delta from PR #6236, kept current so the upstream report stays accurate.
 
+### Ported to Effect v4
+
+The single largest delta. PR #6236 targets Effect **v3**; this vendored copy has been migrated to
+**v4**, so a re-sync against upstream will not apply cleanly until upstream itself moves. The
+structural changes, as opposed to the mechanical renames:
+
+| v3 (upstream) | v4 (here) | Note |
+|---|---|---|
+| `TestContext.TestContext` layer | `TestClock.layer()` + `Logger.layer([])` | v4 removed both `TestContext` and `TestServices`. The harness composes its test environment from the parts, and re-exports the requirement as `TestServices` so the public type surface is unchanged. |
+| `Layer.toRuntimeWithMemoMap` → `Runtime<R>` | `Layer.buildWithMemoMap` → `Context<R>` | `Runtime<R>` no longer exists. `layer()` builds a `Context` once and provides it per test with `Effect.provideContext`. |
+| `CommandExecutor.Process` / `makeExecutor` | `ChildProcessSpawner.ChildProcessHandle` / `make` | `@effect/platform` folded into core as `effect/unstable/process`. The handle gained `all`, `getInputFd`, `getOutputFd` and `unref`, which the fakes satisfy inertly. |
+| `Schedule.recurs(n) ∘ elapsed ∘ whileOutput(≤ t)` | `Schedule.recurs(n)` + `Schedule.upTo({ duration: t })` | `Schedule` lost `compose`, `elapsed` and `whileOutput`; `upTo` expresses the same bound directly. |
+| `Arbitrary.make(schema)` | `Schema.toArbitrary(schema)(fc)` | The standalone `Arbitrary` module is gone; derivation now returns a factory over the FastCheck namespace. |
+| `Logger.replace(defaultLogger, l)` | swap over `References.CurrentLoggers` | `Logger.layer([l])` would install *only* `l`, silently dropping the ambient `tracerLogger`; `log-capture` does the one-for-one swap explicitly to preserve v3 behaviour. |
+
 ### Additions (no upstream counterpart)
 
 Roughly 1,200 lines of new code that PR #6236 has no equivalent for. Listed here because the
@@ -348,7 +364,7 @@ forget — they conflict with nothing.
 | Module | Exists for |
 |---|---|
 | `src/env.ts` | `testConfigLayer` (the concurrency-safe default for `Config`-reading code), plus `withTestEnv` / `scopedEnv` escape hatches with a shared overlap registry that fails loudly instead of corrupting a restore. |
-| `src/command.ts` | Scripted subprocess fixtures: three `CommandExecutor` surfaces and the runner-agnostic `ScriptedProcess` builder, with default-on end-of-scope verification and typed violations. |
+| `src/command.ts` | Scripted subprocess fixtures: three `ChildProcessSpawner` surfaces and the runner-agnostic `ScriptedProcess` builder, with default-on end-of-scope verification and typed violations. |
 
 ### Repo-conformance changes
 
@@ -361,7 +377,7 @@ forget — they conflict with nothing.
 | `Arbitraries`, `PropValues`, `PropOptions` are `type` | Union, mapped and conditional types **cannot** be interfaces. Not a divergence by choice either. |
 | All 35 explicit `any` removed (index 3 / internal 30 / utils 2); 2 `@ts-ignore` and 1 dead `eslint-disable` removed | `noExplicitAny` is a biome **error** here and suppression directives are banned. The public type inference is preserved; see the per-site notes below. |
 | Docgen `@since` tags and `docgen.json` / `tsconfig.{build,src,test}.json` dropped | We do not run upstream's docgen pipeline. |
-| `fast-check` is not a declared dependency | Reached through `effect/FastCheck`; `effect` already depends on it, and a second declaration risks two copies in one tree. |
+| `fast-check` is not a declared dependency | Reached through `effect/testing/FastCheck`; `effect` already depends on it, and a second declaration risks two copies in one tree. |
 | Test layout `test/` → `__tests__/` | Repo convention. |
 | `bunfig.toml` preloads `../../scripts/test-timezone.ts` | Pins `TZ=UTC` so a date-rendering assertion cannot pass or fail on the host's zone. |
 

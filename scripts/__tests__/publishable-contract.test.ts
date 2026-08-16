@@ -25,7 +25,17 @@ type PublishManifest = {
 
 const PACKED_DEP_FIELDS = ['dependencies', 'peerDependencies', 'optionalDependencies'] as const;
 const PUBLISHED_SCOPE = '@packages/';
-const CROSS_BOUNDARY_SINGLETONS = ['effect', '@effect/platform', 'svelte'];
+const CROSS_BOUNDARY_SINGLETONS = ['effect', 'svelte'];
+
+/**
+ * A peer range must stay open so a consumer can dedupe the singleton onto one
+ * copy — EXCEPT when it targets a prerelease. npm range semantics do not admit
+ * prereleases the way they admit stable versions (`^4.0.0` matches no
+ * `4.0.0-rc.*`), and a prerelease line can break between builds, so an exact
+ * pin is the honest declaration until the dependency ships stable.
+ */
+const isAcceptablePeerRange = (range: string): boolean =>
+  /^[\^~>]/.test(range) || /-(?:rc|beta|alpha|next)\./.test(range);
 
 const publishManifest = (manifestPath: string): PublishManifest =>
   JSON.parse(readFileSync(manifestPath, 'utf8')) as PublishManifest;
@@ -98,9 +108,13 @@ describe('publishable package contract', () => {
         }
       });
 
-      it('declares every peer dependency as a range rather than an exact pin', () => {
+      it('declares every peer dependency as a range, or as an exact pin when it targets a prerelease', () => {
         for (const [dep, range] of Object.entries(manifest.peerDependencies ?? {})) {
-          expect({ dep, range, ranged: /^[\^~>]/.test(range) }).toEqual({ dep, range, ranged: true });
+          expect({ dep, range, ranged: isAcceptablePeerRange(range) }).toEqual({
+            dep,
+            range,
+            ranged: true,
+          });
         }
       });
 

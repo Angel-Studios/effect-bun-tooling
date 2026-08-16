@@ -1,5 +1,4 @@
 import * as Cause from 'effect/Cause';
-import * as Chunk from 'effect/Chunk';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
 import * as Ref from 'effect/Ref';
@@ -39,8 +38,9 @@ const runFlakyCountingAttempts = <A, E>(
     return { attempts, exit };
   });
 
+// v4 flattened `Cause` into a `reasons` array, replacing `Cause.defects`.
 const defectsOf = (cause: Cause.Cause<never>): ReadonlyArray<unknown> =>
-  cause.pipe(Cause.defects, Chunk.toReadonlyArray);
+  cause.reasons.filter(Cause.isDieReason).map((reason) => reason.defect);
 
 const soleDefectOf = <A>(exit: Exit.Exit<A, never>): unknown =>
   Exit.match(exit, {
@@ -51,7 +51,7 @@ const soleDefectOf = <A>(exit: Exit.Exit<A, never>): unknown =>
 const terminalCauseShapeOf = <A>(exit: Exit.Exit<A, never>): string =>
   Exit.match(exit, {
     onFailure: (cause) =>
-      `die=${Cause.isDie(cause)} typedFailure=${Cause.isFailure(cause)} interruptedOnly=${Cause.isInterruptedOnly(cause)}`,
+      `die=${Cause.hasDies(cause)} typedFailure=${Cause.hasFails(cause)} interruptedOnly=${Cause.hasInterruptsOnly(cause)}`,
     onSuccess: () => 'THE_EFFECT_SUCCEEDED',
   });
 

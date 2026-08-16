@@ -1,10 +1,10 @@
 import * as assert from 'node:assert';
 import type * as Cause from 'effect/Cause';
-import * as Either from 'effect/Either';
 import * as Equal from 'effect/Equal';
 import * as Exit from 'effect/Exit';
 import * as Option from 'effect/Option';
 import * as Predicate from 'effect/Predicate';
+import * as Result from 'effect/Result';
 
 export function fail(message: string): never {
   assert.fail(message);
@@ -114,19 +114,19 @@ export function assertSome<A>(
 }
 
 export function assertLeft<R, L>(
-  either: Either.Either<R, L>,
+  result: Result.Result<R, L>,
   expected: L,
   ..._: Array<never>
-): asserts either is Either.Left<L, never> {
-  deepStrictEqual(either, Either.left(expected));
+): asserts result is Result.Failure<never, L> {
+  deepStrictEqual(result, Result.fail(expected));
 }
 
 export function assertRight<R, L>(
-  either: Either.Either<R, L>,
+  result: Result.Result<R, L>,
   expected: R,
   ..._: Array<never>
-): asserts either is Either.Right<never, R> {
-  deepStrictEqual(either, Either.right(expected));
+): asserts result is Result.Success<R, never> {
+  deepStrictEqual(result, Result.succeed(expected));
 }
 
 export function assertFailure<A, E>(
