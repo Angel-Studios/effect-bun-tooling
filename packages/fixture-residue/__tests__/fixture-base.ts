@@ -3,10 +3,12 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { FIXTURE_ROOT_DIRNAME, HOST, SEP } from '../src/sweep';
 
+const REPO_ROOT_MARKERS = ['bun.lock', '.git'] as const;
+
 const repoRoot = (): string => {
   let dir = import.meta.dir;
   for (;;) {
-    if (existsSync(join(dir, 'pnpm-workspace.yaml')) || existsSync(join(dir, '.git'))) return dir;
+    if (REPO_ROOT_MARKERS.some((marker) => existsSync(join(dir, marker)))) return dir;
     const parent = dirname(dir);
     if (parent === dir) break;
     dir = parent;

@@ -9,7 +9,9 @@ type Workflow = { readonly jobs?: Readonly<Record<string, Job>> };
 
 const WORKFLOWS = ['ci.yml', 'release.yml'];
 
-const REGISTRY_INVOCATION = /\b(?:npm|pnpm|bun|yarn)\s+publish\b/;
+/** `<tool> publish`, for ANY tool. A shape rather than a list of known package managers, so a
+ *  publish through one nobody thought to enumerate is caught too. */
+const REGISTRY_INVOCATION = /\b[\w@/.-]+\s+publish\b/;
 const RELEASE_UPLOAD = /gh release upload\s+"?\$\{?RELEASE_TAG\}?"?\s+(\S+)/;
 
 const runScripts = (workflow: string): readonly string[] => {

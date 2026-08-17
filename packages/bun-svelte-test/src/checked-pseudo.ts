@@ -34,7 +34,7 @@ const INSTALL_FAILURE_HINT = [
   '     the installed version matches `:checked` against options natively.',
   '  3. Two happy-dom copies are installed, and the globals registered by',
   '     `@happy-dom/global-registrator` come from a different copy than the one',
-  '     patched here. Check `pnpm why happy-dom` from this package directory.',
+  '     patched here. Check `bun pm why happy-dom` from this package directory.',
 ].join('\n');
 
 type PseudoDescriptor = { readonly name?: string };

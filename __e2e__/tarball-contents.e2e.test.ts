@@ -80,11 +80,11 @@ describe('the produced archive carries only source TypeScript, a manifest and th
       writeFileSync(join(packageDir, 'README.md'), '# stowaway fixture\n');
       writeFileSync(join(packageDir, 'LICENSE'), 'MIT\n');
       writeFileSync(join(packageDir, 'src', 'index.ts'), 'export const value = 1;\n');
-      writeFileSync(join(packageDir, 'src', 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
+      writeFileSync(join(packageDir, 'src', 'bun.lock'), '{}\n');
 
       const entries = archiveEntries(packOne(packageDir, destination));
 
-      expect(entries).toContain('package/src/pnpm-workspace.yaml');
+      expect(entries).toContain('package/src/bun.lock');
       expect(entries).not.toEqual(expectedEntries(packageDir));
     },
     PACK_TIMEOUT_MS,

@@ -25,7 +25,7 @@ const SUBSTITUTION_FAILURE_HINT = [
   '     This loader derives the substitution from that map at preload time, so a',
   '     restructured map silently yields zero substitutions.',
   '  2. Two svelte copies are installed, and the tests load a different copy than the',
-  '     one substituted. Check `pnpm why svelte` from this package directory.',
+  '     one substituted. Check `bun pm why svelte` from this package directory.',
   '  3. Something imported `svelte` before this preload registered the plugin.',
 ].join('\n');
 
@@ -72,7 +72,7 @@ const assertSvelteKitSyncRan = (): void => {
       'git worktree will not have it. Without it, bun cannot resolve `$lib/*` and you',
       'will see `Cannot find module` errors that look like a loader failure.',
       '',
-      'Fix: run `pnpm svelte-kit sync` (or `pnpm exec svelte-kit sync`) in this package.',
+      'Fix: run `bunx svelte-kit sync` in this package.',
     ].join('\n'),
   );
 };

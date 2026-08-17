@@ -41,21 +41,21 @@ type package that reaches it.** `@types/bun` satisfies both on its own — it de
 which depends on `@types/node`, and whose own declarations import `node:*` modules by specifier —
 so `"types": ["bun"]` is sufficient and naming `node` is not required.
 
-Measured on TypeScript 6.0.3 against the packed tarball:
+Measured on TypeScript 7.0.2 against the packed tarball:
 
 | consumer configuration | `tsc --noEmit` |
 |---|---|
 | `@types/bun`, `"types": ["bun"]` | exit 0 |
 | `@types/bun` + `@types/node`, `"types": ["bun", "node"]` | exit 0 |
 | `@types/node`, `"types": ["node"]` | exit 0 |
-| `@types/bun`, `"types": ["bun"]`, `@types/node` deleted from disk | **exit 2** |
-| no node or bun typings at all | **exit 2** |
+| `@types/bun`, `"types": ["bun"]`, `@types/node` deleted from disk | **exit 1** |
+| no node or bun typings at all | **exit 1** |
 
 Both failing rows report the same thing, and it is reported against this package's file inside the
 consumer's `node_modules`:
 
 ```
-node_modules/@packages/uuid-effect/src/layer.live.ts(1,28): error TS2591: Cannot find name 'node:crypto'.
+node_modules/@packages/uuid-effect/src/layer.live.ts(1,28): error TS2591: Cannot find name 'node:crypto'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
 ```
 
 There is no way to exclude that file from the check instead: `skipLibCheck` covers `.d.ts` only, and

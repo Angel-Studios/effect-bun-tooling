@@ -181,11 +181,12 @@ it('reads a manifest', () => {
 disposal. `makeFixtureRoot(label)` is the same thing without the hook, for callers that own their
 lifecycle; `fixtureDirAtBase(prefix)` returns a single directory.
 
-- **The repo root is found by walking up from this module** looking for a `pnpm-workspace.yaml` or
-  `.git` marker, and it **throws** rather than falling back out-of-repo. Installed under
-  `node_modules/`, that walk therefore lands on the *consumer's* root — which is why this package
-  ships `src/` only and no workspace file. A stray `pnpm-workspace.yaml` inside the published
-  tarball would stop the walk inside `node_modules` and mint every fixture in the wrong place.
+- **The repo root is found by walking up from this module** looking for a `bun.lock` or `.git`
+  marker, and it **throws** rather than falling back out-of-repo. Installed under `node_modules/`,
+  that walk therefore lands on the *consumer's* root — which is why this package ships `src/` only
+  and no lockfile. A stray `bun.lock` inside the published tarball would stop the walk inside
+  `node_modules` and mint every fixture in the wrong place; `bun pm pack` strips `.git` but **not**
+  `bun.lock`, so that is the marker the `__e2e__` contents check actually guards against.
 - Each directory carries a `<label>--<host>--<pid>--<random>` ownership token, so
   `@packages/fixture-residue/sweep` can tell a live suite's fixture from one a crashed run
   stranded. The first mint in a process reports pre-existing residue on stderr and does **not**
@@ -373,7 +374,7 @@ forget — they conflict with nothing.
 | Package renamed `@packages/effect-bun-test`; imports rewritten off `@effect/bun-test` | Never shadow the upstream npm scope. |
 | `export namespace BunTest { ... }` flattened to top-level exported types (`BunTest.Methods` → `Methods`, `BunTest.Tester` → `Tester`, …) | This repo contains **zero** `namespace` declarations. Names otherwise unchanged so upstream diffs stay readable. |
 | Upstream's `interface` declarations are **kept as `interface`** | An earlier pass converted them to `type` on the strength of `CLAUDE.md`'s style preference. That was reverted: `useConsistentTypeDefinitions` is **not** configured, so the preference is not a mechanical gate here — while every converted declaration is a permanent spurious diff hunk against upstream on every re-sync. Recurring cost, zero benefit, so upstream fidelity wins. Six ship as `interface` in `src/types.ts` (`TestContext`, `TestOptions`, `TestCollectorCallable`, `Tester`, `MethodsNonLive`, `Methods`) plus `BunTestApi` in `internal.ts`. |
-| `TestFunction`, `Test`, `BunRegistrar` are `type`, not `interface` — **a real gate, not a preference** | `useShorthandFunctionType` **is** active (biome recommended defaults) and fires on any interface whose only member is a call signature, demanding `type X = (a) => b`. Verified empirically: an `interface` with a lone call signature is flagged `lint/style/useShorthandFunctionType`, and `pnpm check` runs `--error-on-warnings`. This gate genuinely overrides upstream fidelity, so these three diverge by necessity rather than by choice. |
+| `TestFunction`, `Test`, `BunRegistrar` are `type`, not `interface` — **a real gate, not a preference** | `useShorthandFunctionType` **is** active (biome recommended defaults) and fires on any interface whose only member is a call signature, demanding `type X = (a) => b`. Verified empirically: an `interface` with a lone call signature is flagged `lint/style/useShorthandFunctionType`, and `bun run check` runs `--error-on-warnings`. This gate genuinely overrides upstream fidelity, so these three diverge by necessity rather than by choice. |
 | `Arbitraries`, `PropValues`, `PropOptions` are `type` | Union, mapped and conditional types **cannot** be interfaces. Not a divergence by choice either. |
 | All 35 explicit `any` removed (index 3 / internal 30 / utils 2); 2 `@ts-ignore` and 1 dead `eslint-disable` removed | `noExplicitAny` is a biome **error** here and suppression directives are banned. The public type inference is preserved; see the per-site notes below. |
 | Docgen `@since` tags and `docgen.json` / `tsconfig.{build,src,test}.json` dropped | We do not run upstream's docgen pipeline. |

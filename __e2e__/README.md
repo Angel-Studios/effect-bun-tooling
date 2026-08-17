@@ -1,13 +1,13 @@
 # `__e2e__`
 
 Suites that spawn a package manager, or otherwise leave the current process, live here and
-NOWHERE else. No unit suite in this repo spawns a subprocess: `pnpm run dod` runs `tsc`, the
+NOWHERE else. No unit suite in this repo spawns a subprocess: `bun run dod` runs `tsc`, the
 unit suites and biome, and none of those may pay an install's latency or depend on a network.
 
 Run them:
 
 ```sh
-pnpm run test:e2e     # bun test ./__e2e__/*.e2e.test.ts
+bun run test:e2e     # bun test ./__e2e__/*.e2e.test.ts
 ```
 
 CI runs the same script in the `pack` job of `.github/workflows/ci.yml`, immediately after

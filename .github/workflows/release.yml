@@ -24,31 +24,23 @@ jobs:
         with:
           ref: ${{ github.event.inputs.tag || github.ref_name }}
 
-      - uses: pnpm/action-setup@v4
-        with:
-          run_install: false
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
 
-      - run: pnpm install --frozen-lockfile
+      - run: bun install --frozen-lockfile
 
       - name: the tag must name the version every manifest carries
         run: bun scripts/assert-tag-version.ts "${RELEASE_TAG}"
 
       - name: dod
-        run: pnpm run dod
+        run: bun run dod
 
       - name: pack every publishable package
         run: bun scripts/pack-workspace.ts
 
       - name: prove a consumer resolves these tarballs, and inspect the archives, before any upload
-        run: pnpm run test:e2e
+        run: bun run test:e2e
 
       - name: create the GitHub Release only when the tag does not already have one
         env:

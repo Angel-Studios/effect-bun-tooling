@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, it } from 'bun:test';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeFixtureRoot } from '../scripts/fixture-root';
 import { packAll } from '../scripts/pack-workspace';
@@ -25,6 +25,12 @@ const USE_SOURCE = [
   '',
 ].join('\n');
 
+/** `--ignore-scripts` keeps a dependency's native-build lifecycle script from spawning node inside
+ *  a fixture. The closure being proved here is pure TypeScript resolved from tarballs, so no
+ *  lifecycle script contributes to it, and the only one in reach (msgpackr's optional native
+ *  accelerator) has a pure-JS fallback. */
+const INSTALL = ['bun', 'install', '--no-summary', '--ignore-scripts'] as const;
+
 type Run = { readonly exitCode: number; readonly output: string };
 
 const run = (cmd: readonly string[], cwd: string): Run => {
@@ -49,53 +55,9 @@ const tarballOf = (name: string): string => {
   return path;
 };
 
-const readPackageManager = (): string => {
-  const parsed = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8')) as {
-    packageManager?: string;
-  };
-  if (parsed.packageManager === undefined) {
-    throw new Error('the root package.json declares no packageManager, so a consumer cannot pin one');
-  }
-  return parsed.packageManager;
-};
-
 const consumerDir = (label: string): string => {
   const dir = join(fixtures.path(), label);
   mkdirSync(dir, { recursive: true });
-  return dir;
-};
-
-const pnpmConsumer = (label: string, overrides: Readonly<Record<string, string>>): string => {
-  const dir = consumerDir(label);
-  writeFileSync(
-    join(dir, 'package.json'),
-    `${JSON.stringify(
-      {
-        name: label,
-        version: '0.0.0',
-        private: true,
-        type: 'module',
-        packageManager: readPackageManager(),
-        dependencies: { [CONSUMED]: `file:${tarballOf(CONSUMED)}` },
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  writeFileSync(
-    join(dir, 'pnpm-workspace.yaml'),
-    [
-      'packages:',
-      '  - .',
-      '',
-      'overrides:',
-      ...Object.entries(overrides).map(([name, specifier]) => `  '${name}': ${specifier}`),
-      '',
-      'autoInstallPeers: false',
-      '',
-    ].join('\n'),
-  );
-  writeFileSync(join(dir, 'use.ts'), USE_SOURCE);
   return dir;
 };
 
@@ -125,14 +87,14 @@ const fileSpecifiers = (names: readonly string[]): Readonly<Record<string, strin
 
 describe('a consumer installs the packed tarballs with no lockfile present', () => {
   it(
-    'resolves the whole transitive closure under pnpm and runs code through it',
+    'resolves the whole transitive closure under bun install, whose overrides live in the manifest',
     () => {
-      const dir = pnpmConsumer('consumer-pnpm', fileSpecifiers([CONSUMED, TRANSITIVE]));
+      const dir = bunConsumer('consumer-bun', fileSpecifiers([TRANSITIVE]));
 
-      expect(existsSync(join(dir, 'pnpm-lock.yaml'))).toBe(false);
+      expect(existsSync(join(dir, 'bun.lock'))).toBe(false);
       expect(existsSync(join(dir, 'node_modules'))).toBe(false);
 
-      const install = run(['pnpm', 'install'], dir);
+      const install = run(INSTALL, dir);
       expect({ exitCode: install.exitCode, output: install.output }).toEqual({
         exitCode: 0,
         output: install.output,
@@ -151,38 +113,14 @@ describe('a consumer installs the packed tarballs with no lockfile present', () 
   it(
     'FAILS when only the directly named package is overridden, which is why the closure must be',
     () => {
-      const dir = pnpmConsumer('consumer-pnpm-partial', fileSpecifiers([CONSUMED]));
+      const dir = bunConsumer('consumer-bun-partial', {});
 
-      const install = run(['pnpm', 'install'], dir);
+      const install = run(INSTALL, dir);
 
       expect({ exitCode: install.exitCode === 0, transitive: install.output.includes(TRANSITIVE) }).toEqual({
         exitCode: false,
         transitive: true,
       });
-    },
-    INSTALL_TIMEOUT_MS,
-  );
-
-  it(
-    'resolves the same closure under bun install, whose overrides live in the manifest',
-    () => {
-      const dir = bunConsumer('consumer-bun', fileSpecifiers([TRANSITIVE]));
-
-      expect(existsSync(join(dir, 'bun.lock'))).toBe(false);
-      expect(existsSync(join(dir, 'node_modules'))).toBe(false);
-
-      const install = run(['bun', 'install', '--no-summary'], dir);
-      expect({ exitCode: install.exitCode, output: install.output }).toEqual({
-        exitCode: 0,
-        output: install.output,
-      });
-
-      const used = run(['bun', 'use.ts'], dir);
-      expect({ exitCode: used.exitCode, output: used.output }).toEqual({
-        exitCode: 0,
-        output: used.output,
-      });
-      expect(used.output).toContain('suite box 42');
     },
     INSTALL_TIMEOUT_MS,
   );

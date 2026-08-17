@@ -31,16 +31,18 @@ account and no `npm login`.
 }
 ```
 
-Both forms resolve under `bun install` and `pnpm install`, and neither consults a registry for
-the `@packages` scope. Publishing these names to npmjs is not possible; adopting the registry
-path would require first owning a real scope.
+Both forms resolve under `bun install`, and neither consults a registry for the `@packages`
+scope. Publishing these names to npmjs is not possible; adopting the registry path would require
+first owning a real scope.
+
+Only `bun install` is verified. The `__e2e__` suite proves a bun consumer resolves the packed
+tarballs and runs code through them; no other package manager is exercised. Other managers may
+work, but where one of these packages depends on another the consumer must override the whole
+transitive closure, not just the package it names directly — `__e2e__` proves the partial case
+fails.
 
 A `file:` path to the same tarball carries the same CONTENTS, which is what the `__e2e__` proof
-uses, but it is not equivalent to pnpm in one dimension that matters: pnpm classifies a `file:`
-tarball as `local-filesystem` and a Release URL as `url`, and only the latter counts as *exotic*.
-So a pnpm consumer that resolves these from Release URLs, where one of these packages depends on
-another, needs `blockExoticSubdeps: false` — and the `__e2e__` suite, being `file:`-based, cannot
-exercise that dimension.
+uses, so the suite covers contents and closure resolution but not the Release-URL fetch itself.
 
 `effect` is a **peer** dependency of every package here. It is never bundled and never
 declared as a runtime dependency, because a second copy of `effect` in a consumer's tree
@@ -72,6 +74,50 @@ attaches them to a GitHub Release. Nothing is published to a registry.
 ## Development
 
 ```sh
-pnpm install
-pnpm dod        # tsc + bun test + biome
+bun install
+bun run dod     # tsc + bun test + biome
 ```
+
+**bun is the only runtime executed here — node is never spawned**, and CI installs no node
+toolchain. Two settings in `bunfig.toml` hold that, both closing paths that shell out silently
+rather than expressing a preference:
+
+- `[run] bun = true` — package bins carry a `#!/usr/bin/env node` shebang, `tsc` among them, and
+  `bun run` honours it by spawning node unless told otherwise.
+- `[install] ignoreScripts = true` — bun runs the postinstall of packages on its default-trusted
+  list, and `msgpackr-extract` (transitive through `effect`) is one; its postinstall spawns node
+  via `node-gyp-build-optional-packages`. It is an optional accelerator with a pure-JS fallback,
+  so nothing here needs it built. Note an empty `trustedDependencies` array does **not** achieve
+  this — bun reads `[]` as unset and keeps its defaults.
+
+Source code still imports `node:` builtins and still typechecks against `@types/node`; both are
+satisfied by bun and neither runs the node binary.
+
+One carve-out to know about: `bunx <bin>` does **not** honour `[run] bun = true` and will spawn
+node. Use `bun run <bin>` (or `bunx --bun <bin>`) for any package binary.
+
+### TypeScript and the Effect language service
+
+Typechecking runs on **TypeScript 7** (`tsc` is the native compiler, no node in the loop). The
+Effect language service ships as **`@effect/tsgo`**, which is the TypeScript 7 compatible
+successor to `@effect/language-service` — it embeds a pinned, patched `tsgo` with the Effect
+language service built in, so `@effect/language-service` is no longer a dependency. The
+`tsconfig.base.json` plugin entry still carries the **name** `@effect/language-service`; that is
+the plugin identifier the embedded service answers to, not a package reference.
+
+```sh
+bun run effect-tsgo diagnostics --project tsconfig.json   # Effect type-aware lint
+bun run effect-tsgo get-exe-path                          # LSP binary, for editor config
+```
+
+Editors must be pointed at the executable `get-exe-path` prints; a stock tsserver cannot load the
+plugin by name now that it is embedded rather than installed.
+
+Effect diagnostics are **not** wired into `bun run tsc`. Doing so requires `effect-tsgo patch`,
+which rewrites the installed compiler and so must be re-run after every install. It is also not a
+drop-in here: the current rule severities produce 28 message-level diagnostics, and because
+`tsconfig.base.json` sets no `ignoreEffectSuggestionsInTscExitCode`, a patched `tsc` exits 1 on
+them. Closing that gap means either resolving those diagnostics or opting suggestions out of the
+exit code — a deliberate change, not a side effect of the upgrade. Until then the neighbouring
+`ignoreEffectWarningsInTscExitCode` / `ignoreEffectErrorsInTscExitCode` options only take effect
+under `diagnostics` and in the editor.

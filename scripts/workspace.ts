@@ -58,13 +58,6 @@ export const rootCatalog = (root: string = repoRoot): Catalog => {
   return catalog as Catalog;
 };
 
-export const pnpmCatalog = (root: string = repoRoot): Catalog => {
-  const parsed = Bun.YAML.parse(readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8'));
-  const catalog = (parsed as { catalog?: unknown }).catalog;
-  if (typeof catalog !== 'object' || catalog === null) throw new Error('pnpm-workspace.yaml has no catalog');
-  return catalog as Catalog;
-};
-
 type Span = { readonly start: number; readonly end: number };
 
 const WHITESPACE = /\s/;

@@ -33,15 +33,19 @@ const PATH_SEGMENT = /[\\/]/;
 
 const isInsideNodeModules = (dir: string): boolean => dir.split(PATH_SEGMENT).includes('node_modules');
 
+export const REPO_ROOT_MARKERS = ['bun.lock', '.git'] as const;
+
+const MARKER_LIST = REPO_ROOT_MARKERS.map((marker) => `'${marker}'`).join(' or ');
+
 export const resolveRepoRootFrom = (startDir: string): string => {
   let dir = startDir;
   for (;;) {
-    if (existsSync(join(dir, 'pnpm-workspace.yaml')) || existsSync(join(dir, '.git'))) {
+    if (REPO_ROOT_MARKERS.some((marker) => existsSync(join(dir, marker)))) {
       if (isInsideNodeModules(dir)) {
         throw new Error(
           `fixture-root: the repo-root marker walk from ${startDir} stopped at ${dir}, which is INSIDE a ` +
             `'node_modules' directory. That happens when an INSTALLED copy of a package carries a ` +
-            `'pnpm-workspace.yaml' or '.git' entry of its own, and it would mint every fixture inside a ` +
+            `${MARKER_LIST} entry of its own, and it would mint every fixture inside a ` +
             `dependency instead of inside the consuming repo — silently, in every suite at once. ` +
             `Remove that marker from the packaged files rather than working around this.`,
         );
@@ -54,7 +58,7 @@ export const resolveRepoRootFrom = (startDir: string): string => {
   }
   throw new Error(
     `fixture-root: could not locate the repo root by walking up from ${startDir}; expected a ` +
-      `'pnpm-workspace.yaml' or '.git' marker in some ancestor. Fixtures MUST live inside the repo ` +
+      `${MARKER_LIST} marker in some ancestor. Fixtures MUST live inside the repo ` +
       `(hard invariant I-1), so there is deliberately no out-of-repo fallback.`,
   );
 };

@@ -27,7 +27,7 @@ describe('resolveRepoRootFrom', () => {
   it('throws when a marker inside the installed copy would move the root into node_modules', () => {
     const src = installedPackageDir('marked');
     const installed = join(src, '..');
-    writeFileSync(join(installed, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
+    writeFileSync(join(installed, 'bun.lock'), '{}\n');
 
     expect(() => resolveRepoRootFrom(src)).toThrow('node_modules');
   });
@@ -35,7 +35,7 @@ describe('resolveRepoRootFrom', () => {
   it('names the offending directory in the refusal, so the planted marker is findable', () => {
     const src = installedPackageDir('named');
     const installed = join(src, '..');
-    writeFileSync(join(installed, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
+    writeFileSync(join(installed, 'bun.lock'), '{}\n');
 
     expect(() => resolveRepoRootFrom(src)).toThrow(join(fixtures.path(), 'named'));
   });
