@@ -70,20 +70,17 @@ const makeContext = (): TestContextInternal => {
   };
 };
 
-const flush = async (ctx: TestContextInternal, failed: boolean): Promise<void> => {
-  if (failed) {
-    for (const cb of ctx.__failed) {
-      try {
-        await cb();
-      } catch {}
-    }
-  }
-  for (const cb of ctx.__finished) {
-    try {
-      await cb();
-    } catch {}
-  }
-};
+// A registered `onTestFinished` / `onTestFailed` callback is user code that may
+// be sync or async and is allowed to blow up: its failure must never mask the
+// test's own outcome. `ignoreCause` discards failures, defects and interrupts
+// alike, which is what the original `try { await cb() } catch {}` did.
+const runCallback = (cb: TestCallback): Effect.Effect<void> =>
+  Effect.suspend(() => Effect.promise(() => Promise.resolve(cb()))).pipe(Effect.ignoreCause);
+
+const flush = (ctx: TestContextInternal, failed: boolean): Effect.Effect<void> =>
+  Effect.forEach(failed ? [...ctx.__failed, ...ctx.__finished] : ctx.__finished, runCallback, {
+    discard: true,
+  });
 
 const toBunOptions = (opts?: number | BunTest.TestOptions): number | BunOptions | undefined => {
   if (opts === undefined) return undefined;
@@ -218,44 +215,42 @@ const makeDefaultApi = (): DefaultApi =>
 
 export const defaultApi: DefaultApi = makeDefaultApi();
 
-type RunOutcome<A> =
-  | { readonly _tag: 'Success'; readonly value: A }
-  | { readonly _tag: 'Interrupted' }
-  | { readonly _tag: 'Failed'; readonly error: Error };
+// The value the returned promise rejects with. `Effect.die` is the vehicle
+// rather than `Effect.fail` because `runPromise` squashes the cause back out
+// again, so a defect reaches bun:test as the pretty `Error` itself — with its
+// stack intact — instead of a wrapped failure.
+const toDefect = <E>(cause: Cause.Cause<E>): Effect.Effect<unknown> =>
+  Effect.gen(function* () {
+    if (Cause.hasInterruptsOnly(cause)) {
+      return new Error('All fibers interrupted without errors.');
+    }
+    const errors = Cause.prettyErrors(cause);
+
+    for (let i = 1; i < errors.length; i++) {
+      yield* Effect.logError(errors[i]);
+    }
+    return errors[0];
+  });
 
 const runPromise =
   (ctx?: TestContextInternal) =>
-  async <A, E>(effect: Effect.Effect<A, E>): Promise<A> => {
-    const toOutcome: Effect.Effect<RunOutcome<A>> = Effect.gen(function* () {
-      const exitFiber = yield* effect.pipe(Effect.exit, Effect.forkChild);
+  <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const exitFiber = yield* effect.pipe(Effect.exit, Effect.forkChild);
 
-      const exit = yield* Fiber.join(exitFiber);
-      if (Exit.isSuccess(exit)) {
-        return { _tag: 'Success', value: exit.value } as const;
-      }
-      if (Cause.hasInterruptsOnly(exit.cause)) {
-        return { _tag: 'Interrupted' } as const;
-      }
-      const errors = Cause.prettyErrors(exit.cause);
+        const exit = yield* Fiber.join(exitFiber);
+        if (Exit.isSuccess(exit)) {
+          if (ctx) yield* flush(ctx, false);
+          return exit.value;
+        }
 
-      for (let i = 1; i < errors.length; i++) {
-        yield* Effect.logError(errors[i]);
-      }
-      return { _tag: 'Failed', error: errors[0] } as const;
-    });
-
-    const outcome = await Effect.runPromise(toOutcome, { signal: ctx?.signal });
-
-    if (outcome._tag === 'Success') {
-      if (ctx) await flush(ctx, false);
-      return outcome.value;
-    }
-
-    if (ctx) await flush(ctx, true);
-    throw outcome._tag === 'Interrupted'
-      ? new Error('All fibers interrupted without errors.')
-      : outcome.error;
-  };
+        const defect = yield* toDefect(exit.cause);
+        if (ctx) yield* flush(ctx, true);
+        return yield* Effect.die(defect);
+      }),
+      { signal: ctx?.signal },
+    );
 
 const runTest =
   (ctx?: TestContextInternal) =>
@@ -443,8 +438,10 @@ export const layer =
     const withTestEnv = excludeTestServices
       ? (layer_ as Layer.Layer<R | TestServices, E>)
       : Layer.provideMerge(layer_, TestEnv);
-    const memoMap = options?.memoMap ?? Effect.runSync(Layer.makeMemoMap);
-    const scope = Effect.runSync(Scope.make());
+    // Both are pure constructors, so the `*Unsafe` variants build them directly
+    // instead of spinning up a fiber per `layer()` call just to run a `sync`.
+    const memoMap = options?.memoMap ?? Layer.makeMemoMapUnsafe();
+    const scope = Scope.makeUnsafe();
     // v4 removed `Runtime<R>` and `Layer.toRuntimeWithMemoMap`. The equivalent is
     // to build the layer into a `Context<R>` against the same memo map and scope,
     // then provide that context per test. `buildWithMemoMap` takes the scope

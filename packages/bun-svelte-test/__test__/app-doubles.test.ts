@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import * as Effect from 'effect/Effect';
 import { flushSync } from 'svelte';
 import { browser, building, dev, version } from '$app/environment';
 import { goto, invalidateAll, pushState, resetNavigation } from '$app/navigation';
@@ -62,18 +63,23 @@ describe('$app/navigation captures calls', () => {
     expect(goto.mock.calls).toHaveLength(0);
   });
 
-  it('resetNavigation() also restores the stub implementation', async () => {
-    goto.mockImplementation(async () => {
-      throw new Error('per-test override');
-    });
+  // Declared outside the test's Effect: it is a `$app/navigation` double, so it
+  // runs at bun's promise boundary rather than under the test's services.
+  const rejectingGoto = (): Promise<void> => Effect.runPromise(Effect.die(new Error('per-test override')));
 
-    expect(goto('/x')).rejects.toThrow('per-test override');
+  it('resetNavigation() also restores the stub implementation', () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        goto.mockImplementation(rejectingGoto);
 
-    resetNavigation();
+        expect(goto('/x')).rejects.toThrow('per-test override');
 
-    await goto('/y');
-    expect(goto.mock.calls).toHaveLength(1);
-  });
+        resetNavigation();
+
+        yield* Effect.promise(() => goto('/y'));
+        expect(goto.mock.calls).toHaveLength(1);
+      }),
+    ));
 
   it('the automatic afterEach cleared the previous test`s calls', () => {
     expect(goto.mock.calls).toHaveLength(0);

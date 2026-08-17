@@ -1,3 +1,4 @@
+import * as Effect from 'effect/Effect';
 import { DEFAULT_TEST_URL } from '../dom';
 
 export type PageDouble = {
@@ -45,11 +46,15 @@ const defaultNavigating = (): NavigatingDouble => ({
   complete: null,
 });
 
+// `$app/state`'s `updated.check()` returns a promise; the double never reports
+// an update, so its Effect is a constant run at that boundary.
+const defaultCheck = (): Promise<boolean> => Effect.runPromise(Effect.succeed(false));
+
 export const page: PageDouble = defaultPage();
 export const navigating: NavigatingDouble = defaultNavigating();
 export const updated: UpdatedDouble = {
   current: false,
-  check: async () => false,
+  check: defaultCheck,
 };
 
 export type SetPageInput = Omit<Partial<PageDouble>, 'url'> & { url?: URL | string };
@@ -68,5 +73,5 @@ export const resetPage = (): void => {
   Object.assign(page, defaultPage());
   Object.assign(navigating, defaultNavigating());
   updated.current = false;
-  updated.check = async () => false;
+  updated.check = defaultCheck;
 };

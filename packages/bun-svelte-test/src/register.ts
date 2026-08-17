@@ -2,6 +2,8 @@ import { afterEach, beforeEach } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve as resolvePath } from 'node:path';
 import { plugin } from 'bun';
+import * as Cause from 'effect/Cause';
+import * as Effect from 'effect/Effect';
 import { resetNavigation } from './app-doubles/navigation';
 import { resetPage } from './app-doubles/state';
 import { registerDom, registerResetHook, resetDom } from './dom';
@@ -77,9 +79,9 @@ const assertSvelteKitSyncRan = (): void => {
   );
 };
 
-const assertSvelteBrowserBuild = async (): Promise<void> => {
-  const svelte = await import('svelte');
-  const reactivity = await import('svelte/reactivity');
+const assertSvelteBrowserBuild: Effect.Effect<void> = Effect.gen(function* () {
+  const svelte = yield* Effect.promise(() => import('svelte'));
+  const reactivity = yield* Effect.promise(() => import('svelte/reactivity'));
 
   const failures: string[] = [];
   if ((svelte.flushSync as unknown) === (svelte.onMount as unknown)) {
@@ -94,18 +96,23 @@ const assertSvelteBrowserBuild = async (): Promise<void> => {
   if (failures.length === 0) return;
 
   const substitutions = deriveBrowserSubstitutions();
-  throw new Error(
-    [
-      SUBSTITUTION_FAILURE_HINT,
-      '',
-      'Failed checks:',
-      ...failures,
-      '',
-      `Derived ${substitutions.length} substitution(s) from: ${SUBSTITUTION_ROOTS.join(', ')}`,
-      ...substitutions.map((s) => `  - "svelte${s.subpath.slice(1)}": ${s.serverPath} -> ${s.browserPath}`),
-    ].join('\n'),
+  // A preload that cannot prove the substitution took must abort the run, and a
+  // defect is the Effect-native way to say "this is not recoverable": it reaches
+  // the top-level `await` below as the thrown `Error` itself.
+  return yield* Effect.die(
+    new Error(
+      [
+        SUBSTITUTION_FAILURE_HINT,
+        '',
+        'Failed checks:',
+        ...failures,
+        '',
+        `Derived ${substitutions.length} substitution(s) from: ${SUBSTITUTION_ROOTS.join(', ')}`,
+        ...substitutions.map((s) => `  - "svelte${s.subpath.slice(1)}": ${s.serverPath} -> ${s.browserPath}`),
+      ].join('\n'),
+    ),
   );
-};
+});
 
 const resolveOptionalPeer = (specifier: string): string | undefined => {
   for (const dir of [import.meta.dir, process.cwd()]) {
@@ -116,26 +123,31 @@ const resolveOptionalPeer = (specifier: string): string | undefined => {
   return undefined;
 };
 
-const wireTestingLibrary = async (): Promise<void> => {
+const wireTestingLibrary: Effect.Effect<void> = Effect.gen(function* () {
   const resolved = resolveOptionalPeer(TESTING_LIBRARY_SPECIFIER);
   if (resolved === undefined) return;
 
-  try {
-    await import(resolved);
-  } catch (cause) {
-    throw new Error(
-      [
-        `bun-svelte-test: \`${TESTING_LIBRARY_SPECIFIER}\` is installed (resolved to ${resolved})`,
-        'but failed to import during preload, so its automatic render cleanup is NOT wired.',
-        'Tests would leak mounted components into each other.',
-        '',
-        'Note: do NOT import `@testing-library/svelte/vitest` — that subpath imports',
-        '`beforeEach` from vitest, which does not exist under bun.',
-      ].join('\n'),
-      { cause },
-    );
-  }
-};
+  // `Effect.promise` surfaces a rejected import as a defect, so `catchCause`
+  // replaces v3's `try`/`catch` and `Cause.squash` recovers the original reason
+  // to hang off `cause`.
+  yield* Effect.promise(() => import(resolved)).pipe(
+    Effect.catchCause((cause) =>
+      Effect.die(
+        new Error(
+          [
+            `bun-svelte-test: \`${TESTING_LIBRARY_SPECIFIER}\` is installed (resolved to ${resolved})`,
+            'but failed to import during preload, so its automatic render cleanup is NOT wired.',
+            'Tests would leak mounted components into each other.',
+            '',
+            'Note: do NOT import `@testing-library/svelte/vitest` — that subpath imports',
+            '`beforeEach` from vitest, which does not exist under bun.',
+          ].join('\n'),
+          { cause: Cause.squash(cause) },
+        ),
+      ),
+    ),
+  );
+});
 
 assertSvelteKitSyncRan();
 
@@ -149,9 +161,9 @@ beforeEach(() => {
   if (!preloadCompleted) throw new Error(PARALLEL_UNSUPPORTED_HINT);
 });
 
-await assertSvelteBrowserBuild();
+await Effect.runPromise(assertSvelteBrowserBuild);
 
-await wireTestingLibrary();
+await Effect.runPromise(wireTestingLibrary);
 
 registerResetHook(resetNavigation);
 registerResetHook(resetPage);

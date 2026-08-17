@@ -1,11 +1,14 @@
 import { mkdirSync, rmSync } from 'node:fs';
-import { hostname } from 'node:os';
 import { join } from 'node:path';
+import { FIXTURE_ROOT_DIRNAME, HOST, SEP } from '@packages/fixture-residue/sweep';
 import { repoRoot } from './workspace';
 
-const FIXTURE_ROOT_DIRNAME = '.test-fixtures';
-const SEP = '--';
-const HOST = hostname().replace(/[^A-Za-z0-9_.]+/g, '_');
+/** The convention comes from `@packages/fixture-residue`, never a local copy. This minter is
+ *  deliberately simpler than `@packages/effect-bun-test/fixture-root` — no sweep, no `reserve`,
+ *  and the repo root comes from `./workspace` rather than a marker walk — but the directory NAME
+ *  it produces must stay token-compatible with it, because the tooling-plane tripwire classifies
+ *  every entry under the base. Re-declaring `SEP` or `HOST` here would silently demote these
+ *  directories to `unjudgeable`, which is never reaped and reported until a human intervenes. */
 
 export type FixtureRoot = {
   readonly path: () => string;

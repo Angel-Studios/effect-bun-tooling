@@ -1,4 +1,4 @@
-import { Effect, Logger, References } from 'effect';
+import { DateTime, Effect, Logger, References } from 'effect';
 import { describe, expect, it } from '../src/index';
 import { makeLogCapture, renderLogMessage } from '../src/log-capture';
 
@@ -67,9 +67,13 @@ describe('renderLogMessage — string leaves are verbatim', () => {
 
   describe('content is never silently erased', () => {
     it('does not erase built-ins whose own enumerable properties are empty', () => {
+      // A global `Date` is the SUBJECT here, not incidental time access: the case
+      // this pins is a built-in with no own enumerable properties. `DateTime`
+      // states the instant, `toDateUtc` materialises the `Date` under test.
+      const date = DateTime.toDateUtc(DateTime.makeUnsafe('2020-01-01T00:00:00.000Z'));
       expect(renderLogMessage(new Map([['a', 1]]))).toContain('a');
       expect(renderLogMessage(new Set(['needle']))).toContain('needle');
-      expect(renderLogMessage(new Date('2020-01-01T00:00:00.000Z'))).toContain('2020-01-01');
+      expect(renderLogMessage(date)).toContain('2020-01-01');
       expect(renderLogMessage(/ab+c/g)).toContain('ab+c');
       expect(renderLogMessage(new Uint8Array([1, 2, 3]))).toContain('1, 2, 3');
     });

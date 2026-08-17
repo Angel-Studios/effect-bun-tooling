@@ -1,21 +1,22 @@
 import { mock } from 'bun:test';
+import * as Effect from 'effect/Effect';
 
 type NavigationTarget = { readonly url: URL; readonly params: Record<string, string> | null };
 type BeforeNavigateCallback = (navigation: unknown) => void;
 type AfterNavigateCallback = (navigation: unknown) => void;
 type OnNavigateCallback = (navigation: unknown) => void | Promise<void>;
+type PreloadDataResult = { type: 'loaded'; status: number; data: Record<string, unknown> };
 
-const gotoImpl = async (_url: string | URL, _options?: Record<string, unknown>): Promise<void> => {};
-const invalidateImpl = async (_resource: string | URL | ((url: URL) => boolean)): Promise<void> => {};
-const invalidateAllImpl = async (): Promise<void> => {};
-const preloadDataImpl = async (
-  _href: string,
-): Promise<{ type: 'loaded'; status: number; data: Record<string, unknown> }> => ({
-  type: 'loaded',
-  status: 200,
-  data: {},
-});
-const preloadCodeImpl = async (..._pathnames: string[]): Promise<void> => {};
+// SvelteKit's real `$app/navigation` returns promises, so the doubles have to as
+// well. Each is the Effect for the stubbed outcome, run at that boundary.
+const gotoImpl = (_url: string | URL, _options?: Record<string, unknown>): Promise<void> =>
+  Effect.runPromise(Effect.void);
+const invalidateImpl = (_resource: string | URL | ((url: URL) => boolean)): Promise<void> =>
+  Effect.runPromise(Effect.void);
+const invalidateAllImpl = (): Promise<void> => Effect.runPromise(Effect.void);
+const preloadDataImpl = (_href: string): Promise<PreloadDataResult> =>
+  Effect.runPromise(Effect.sync((): PreloadDataResult => ({ type: 'loaded', status: 200, data: {} })));
+const preloadCodeImpl = (..._pathnames: string[]): Promise<void> => Effect.runPromise(Effect.void);
 const pushStateImpl = (_url: string | URL, _state: Record<string, unknown>): void => {};
 const replaceStateImpl = (_url: string | URL, _state: Record<string, unknown>): void => {};
 const beforeNavigateImpl = (_callback: BeforeNavigateCallback): void => {};

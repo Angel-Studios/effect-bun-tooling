@@ -1,5 +1,6 @@
 import * as assert from 'node:assert';
-import type * as Cause from 'effect/Cause';
+import * as Cause from 'effect/Cause';
+import * as Effect from 'effect/Effect';
 import * as Equal from 'effect/Equal';
 import * as Exit from 'effect/Exit';
 import * as Option from 'effect/Option';
@@ -79,23 +80,33 @@ export function throws(thunk: () => void, error?: Error | ((u: unknown) => undef
   }
 }
 
-export async function throwsAsync(
+export function throwsAsync(
   thunk: () => Promise<void>,
   error?: Error | ((u: unknown) => undefined),
   ..._: Array<never>
-) {
-  try {
-    await thunk();
-    fail('Expected to throw an error');
-  } catch (e) {
-    if (error !== undefined) {
-      if (Predicate.isFunction(error)) {
-        error(e);
-      } else {
-        deepStrictEqual(e, error);
-      }
-    }
-  }
+): Promise<void> {
+  // `Effect.promise` turns a rejection into a defect, so `catchCause` sees every
+  // way the thunk can blow up and `Cause.squash` hands back the thrown value.
+  // As in `throws` above, the `fail` for a thunk that did NOT throw lands in the
+  // same handler, so it only surfaces when an `error` matcher was supplied.
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      yield* Effect.promise(thunk);
+      fail('Expected to throw an error');
+    }).pipe(
+      Effect.catchCause((cause) =>
+        Effect.sync(() => {
+          if (error === undefined) return;
+          const thrown = Cause.squash(cause);
+          if (Predicate.isFunction(error)) {
+            error(thrown);
+          } else {
+            deepStrictEqual(thrown, error);
+          }
+        }),
+      ),
+    ),
+  );
 }
 
 export function assertNone<A>(

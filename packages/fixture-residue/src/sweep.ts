@@ -103,6 +103,13 @@ export const sweepFixtureResidue = (opts: {
 
   readonly remove?: (path: string) => void;
 }): SweepResult => {
+  // `opts.now` IS this function's clock seam — every test injects it, and both the age comparison
+  // and the grace window read it rather than the wall clock. This is only the production default
+  // at the edge. Effect's `Clock` is deliberately out of reach: the package ships zero runtime
+  // dependencies by contract (see README) so a tooling plane can inspect the convention without
+  // pulling in a test harness, and a synchronous `Clock` read here would launder the same ambient
+  // time through Effect without becoming injectable, since `defaultValue()` bypasses the fiber ref.
+  // @effect-diagnostics-next-line globalDate:off
   const now = opts.now ?? Date.now();
   const base = opts.base;
   const remove = opts.remove ?? removeRecursively;

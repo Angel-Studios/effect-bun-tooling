@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import type { BunPlugin } from 'bun';
+import * as Effect from 'effect/Effect';
 import { compile, compileModule } from 'svelte/compiler';
 
 const SVELTE_COMPONENT_FILTER = /\.svelte$/;
@@ -63,22 +64,32 @@ const typeStripper = new Bun.Transpiler({ loader: 'ts', target: 'browser' });
 export const sveltePlugin: BunPlugin = {
   name: 'bun-svelte-test',
   setup(build) {
-    build.onLoad({ filter: SVELTE_COMPONENT_FILTER }, async ({ path }) => {
-      const source = await Bun.file(path).text();
-      const { js } = compile(source, { ...COMPILE_OPTIONS, filename: path });
-      return { contents: js.code, loader: 'js' };
-    });
+    // `onLoad` is a `Promise`-returning boundary owned by bun, so each loader is
+    // an Effect run at the edge rather than an `async` callback.
+    build.onLoad({ filter: SVELTE_COMPONENT_FILTER }, ({ path }) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const source = yield* Effect.promise(() => Bun.file(path).text());
+          const { js } = compile(source, { ...COMPILE_OPTIONS, filename: path });
+          return { contents: js.code, loader: 'js' as const };
+        }),
+      ),
+    );
 
-    build.onLoad({ filter: SVELTE_MODULE_FILTER }, async ({ path }) => {
-      const source = await Bun.file(path).text();
-      const javascript = path.endsWith('.ts') ? typeStripper.transformSync(source) : source;
-      const { js } = compileModule(javascript, {
-        generate: COMPILE_OPTIONS.generate,
-        dev: COMPILE_OPTIONS.dev,
-        filename: path,
-      });
-      return { contents: js.code, loader: 'js' };
-    });
+    build.onLoad({ filter: SVELTE_MODULE_FILTER }, ({ path }) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const source = yield* Effect.promise(() => Bun.file(path).text());
+          const javascript = path.endsWith('.ts') ? typeStripper.transformSync(source) : source;
+          const { js } = compileModule(javascript, {
+            generate: COMPILE_OPTIONS.generate,
+            dev: COMPILE_OPTIONS.dev,
+            filename: path,
+          });
+          return { contents: js.code, loader: 'js' as const };
+        }),
+      ),
+    );
 
     for (const substitution of deriveBrowserSubstitutions()) {
       build.onLoad({ filter: new RegExp(`^${escapeRegExp(substitution.serverPath)}$`) }, () => ({
