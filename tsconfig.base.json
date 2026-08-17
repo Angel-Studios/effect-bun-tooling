@@ -66,6 +66,7 @@
           "schemaUnionOfLiterals": "error",
           "scopeInLayerEffect": "error",
           "serviceNotAsClass": "error",
+          "strictBooleanExpressions": "error",
           "tryCatchInEffectGen": "error",
           "unknownInEffectCatch": "error",
           "unnecessaryEffectGen": "error",
@@ -77,10 +78,8 @@
           
           "globalFetch": "off",
           "globalFetchInEffect": "off",
-          
           "processEnv": "off",
           "processEnvInEffect": "off",
-          "strictBooleanExpressions": "off",
           "strictEffectProvide": "off",
           "cryptoRandomUUID": "off",
           "deterministicKeys": "off",

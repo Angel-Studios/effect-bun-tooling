@@ -53,7 +53,7 @@ export function assertFalse(self: boolean, message?: string, ..._: Array<never>)
 
 export function assertInclude(actual: string | undefined, expected: string, ..._: Array<never>) {
   if (Predicate.isString(expected)) {
-    if (!actual?.includes(expected)) {
+    if (actual === undefined || !actual.includes(expected)) {
       fail(`Expected\n\n${actual}\n\nto include\n\n${expected}`);
     }
   }

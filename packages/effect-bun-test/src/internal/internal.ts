@@ -108,19 +108,19 @@ const baseCollector = ((
   const [opts, fn] = splitArgs(second, third);
 
   const o = isObject(opts) ? (opts as BunTest.TestOptions) : undefined;
-  if (o?.todo) {
+  if (o?.todo === true) {
     bunTest.todo(name, fn, toBunOptions(opts));
     return;
   }
-  if (o?.fails) {
+  if (o?.fails === true) {
     bunTest.failing(name, fn, toBunOptions(opts));
     return;
   }
-  if (o?.only) {
+  if (o?.only === true) {
     bunTest.only(name, fn, toBunOptions(opts));
     return;
   }
-  if (o?.skip) {
+  if (o?.skip === true) {
     bunTest.skip(name, fn, toBunOptions(opts));
     return;
   }
@@ -241,12 +241,12 @@ const runPromise =
 
         const exit = yield* Fiber.join(exitFiber);
         if (Exit.isSuccess(exit)) {
-          if (ctx) yield* flush(ctx, false);
+          if (ctx !== undefined) yield* flush(ctx, false);
           return exit.value;
         }
 
         const defect = yield* toDefect(exit.cause);
-        if (ctx) yield* flush(ctx, true);
+        if (ctx !== undefined) yield* flush(ctx, true);
         return yield* Effect.die(defect);
       }),
       { signal: ctx?.signal },
@@ -481,7 +481,7 @@ export const layer =
         },
       }) as unknown as BunTest.MethodsNonLive<R, ExcludeTestServices>;
 
-    const timeoutMs = options?.timeout ? Duration.toMillis(options.timeout) : undefined;
+    const timeoutMs = options?.timeout !== undefined ? Duration.toMillis(options.timeout) : undefined;
     const before = beforeAll as unknown as (fn: () => Promise<void>, timeout?: number) => void;
     const after = afterAll as unknown as (fn: () => Promise<void>, timeout?: number) => void;
 
