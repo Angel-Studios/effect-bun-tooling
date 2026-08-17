@@ -1,6 +1,6 @@
 import { DateTime, Effect, Logger, References } from 'effect';
 import { describe, expect, it } from '../src/index';
-import { makeLogCapture, renderLogMessage } from '../src/log-capture';
+import { logLevelLabel, makeLogCapture, renderLogMessage } from '../src/log-capture';
 
 const LF = String.fromCharCode(10);
 const CR = String.fromCharCode(13);
@@ -136,11 +136,26 @@ describe('makeLogCapture — end-to-end through the real Effect logger', () => {
     Effect.gen(function* () {
       const cap = makeLogCapture();
       yield* Effect.logWarning('warn-here').pipe(Effect.provide(cap.layer));
-      expect(cap.entries[0]?.level).toBe('Warn');
+      expect(cap.entries[0]?.level).toBe('WARN');
       expect(cap.entries[0]?.message).toContain('warn-here');
     }),
   );
 
+  // v4 renamed every level ('WARN' -> 'Warn') and respelled the off sentinel
+  // ('OFF' -> 'None'). A caller's `level === 'WARN'` filter would go silently
+  // empty rather than fail, so the captured level stays on the v3 labels.
+  it.live('reports levels under their v3 labels, not the raw v4 level names', () =>
+    Effect.gen(function* () {
+      const cap = makeLogCapture();
+      yield* Effect.logError('e').pipe(
+        Effect.andThen(Effect.logWarning('w')),
+        Effect.andThen(Effect.logInfo('i')),
+        Effect.andThen(Effect.logDebug('d')),
+        Effect.provide(cap.layer),
+      );
+      expect(cap.entries.map((e) => e.level)).toEqual(['ERROR', 'WARN', 'INFO', 'DEBUG']);
+    }),
+  );
   it.live('exposes the untouched payload on `raw` for structural assertions', () =>
     Effect.gen(function* () {
       const cap = makeLogCapture();
@@ -235,4 +250,23 @@ describe('makeLogCapture — end-to-end through the real Effect logger', () => {
       expect(viaEffect).toEqual(cap.messages());
     }),
   );
+});
+
+describe('logLevelLabel', () => {
+  it('maps a v4 level name onto the v3 label', () => {
+    expect(logLevelLabel('Fatal')).toBe('FATAL');
+    expect(logLevelLabel('Error')).toBe('ERROR');
+    expect(logLevelLabel('Warn')).toBe('WARN');
+    expect(logLevelLabel('Info')).toBe('INFO');
+    expect(logLevelLabel('Debug')).toBe('DEBUG');
+    expect(logLevelLabel('Trace')).toBe('TRACE');
+  });
+
+  // 'All' upper-cases to the right answer by luck; 'None' does not, and v3
+  // called that level 'OFF'. Both are pinned so the table cannot rot into a
+  // bare `toUpperCase()`.
+  it('respells the sentinels, which a plain upper-casing gets wrong', () => {
+    expect(logLevelLabel('All')).toBe('ALL');
+    expect(logLevelLabel('None')).toBe('OFF');
+  });
 });

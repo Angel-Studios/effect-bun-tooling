@@ -82,6 +82,18 @@ export type LogCaptureOptions = {
   readonly minimumLogLevel?: MinimumLogLevel;
 };
 
+// v3 exposed a log level as an object whose `label` was upper case ('WARN',
+// 'INFO', and 'OFF' for the off sentinel); v4 models a level as a bare string
+// union member ('Warn', 'Info', 'None'). Every level differs in case and the
+// off sentinel differs in spelling, so a caller that kept v3's
+// `level === 'WARN'` comparison would not fail — it would match nothing and
+// quietly assert nothing. `CapturedLog.level` therefore stays on the v3 labels,
+// and this mapping is exported so a caller that builds its own capture logger
+// can label a raw v4 level the same way.
+const LOG_LEVEL_LABEL: Readonly<Record<string, string>> = { All: 'ALL', None: 'OFF' };
+
+export const logLevelLabel = (level: string): string => LOG_LEVEL_LABEL[level] ?? level.toUpperCase();
+
 const withMinimumLogLevel = (base: Layer.Layer<never>, level: MinimumLogLevel): Layer.Layer<never> =>
   level === LEAVE_AMBIENT_LOG_LEVEL
     ? base
@@ -102,7 +114,7 @@ const replaceDefaultLogger = (logger: Logger.Logger<unknown, void>): Layer.Layer
 export const makeLogCapture = (options: LogCaptureOptions = {}): LogCapture => {
   const entries: CapturedLog[] = [];
   const logger = Logger.make(({ logLevel, message }) => {
-    entries.push({ level: logLevel, message: renderLogMessage(message), raw: message });
+    entries.push({ level: logLevelLabel(logLevel), message: renderLogMessage(message), raw: message });
   });
   // v4 removed `Logger.add` / `Logger.replace`. `add` maps cleanly onto
   // `mergeWithExisting`, but `replace` does not: `Logger.layer([logger])` would
