@@ -26,6 +26,7 @@
   },
   "scripts": {
     "tsc": "tsc --noEmit",
+    "lint:effect": "effect-tsgo diagnostics --project tsconfig.json",
     "check": "biome check src/ __tests__/",
     "test:unit:once": "bun test --coverage"
   },

@@ -65,8 +65,10 @@ describe('flakyTest retries a DEFECT on Schedule.recurs(10)', () => {
         (): Effect.Effect<never> => Effect.die(ORIGINAL_DEFECT),
       );
 
+      const failed = Exit.isFailure(exit);
+
       expect(attempts).toBe(ATTEMPTS_FOR_RECURS_10);
-      expect(Exit.isFailure(exit)).toBe(true);
+      expect(failed).toBe(true);
     }),
   );
 
@@ -78,7 +80,9 @@ describe('flakyTest retries a DEFECT on Schedule.recurs(10)', () => {
           (): Effect.Effect<never> => Effect.die(ORIGINAL_DEFECT),
         );
 
-        expect(soleDefectOf(exit)).toBe(ORIGINAL_DEFECT);
+        const defect = soleDefectOf(exit);
+
+        expect(defect).toBe(ORIGINAL_DEFECT);
       }),
   );
 
@@ -88,7 +92,9 @@ describe('flakyTest retries a DEFECT on Schedule.recurs(10)', () => {
         (): Effect.Effect<never> => Effect.die(ORIGINAL_DEFECT),
       );
 
-      expect(terminalCauseShapeOf(exit)).toBe('die=true typedFailure=false interruptedOnly=false');
+      const shape = terminalCauseShapeOf(exit);
+
+      expect(shape).toBe('die=true typedFailure=false interruptedOnly=false');
       expect(
         Exit.match(exit, {
           onFailure: (cause) => defectsOf(cause).length,
@@ -116,8 +122,11 @@ describe('flakyTest retries a TYPED FAILURE on the same schedule and still ends 
         (): Effect.Effect<never, FlakyGuardTypedFailure> => Effect.fail(ORIGINAL_TYPED_FAILURE),
       );
 
-      expect(terminalCauseShapeOf(exit)).toBe('die=true typedFailure=false interruptedOnly=false');
-      expect(soleDefectOf(exit)).toBe(ORIGINAL_TYPED_FAILURE);
+      const shape = terminalCauseShapeOf(exit);
+      const defect = soleDefectOf(exit);
+
+      expect(shape).toBe('die=true typedFailure=false interruptedOnly=false');
+      expect(defect).toBe(ORIGINAL_TYPED_FAILURE);
     }),
   );
 });
@@ -130,8 +139,10 @@ describe('flakyTest recovers instead of dying when a later attempt succeeds', ()
           attempt <= 2 ? Effect.die(ORIGINAL_DEFECT) : Effect.succeed('recovered-from-defects'),
       );
 
+      const failed = Exit.isFailure(exit);
+
       expect(attempts).toBe(3);
-      expect(Exit.isFailure(exit)).toBe(false);
+      expect(failed).toBe(false);
       expect(successValueOf(exit, 'DIED_INSTEAD_OF_RECOVERING')).toBe('recovered-from-defects');
     }),
   );
@@ -143,8 +154,10 @@ describe('flakyTest recovers instead of dying when a later attempt succeeds', ()
           attempt <= 2 ? Effect.fail(ORIGINAL_TYPED_FAILURE) : Effect.succeed('recovered-from-failures'),
       );
 
+      const failed = Exit.isFailure(exit);
+
       expect(attempts).toBe(3);
-      expect(Exit.isFailure(exit)).toBe(false);
+      expect(failed).toBe(false);
       expect(successValueOf(exit, 'DIED_INSTEAD_OF_RECOVERING')).toBe('recovered-from-failures');
     }),
   );
@@ -169,9 +182,12 @@ describe('flakyTest never retries an INTERRUPT', () => {
         (): Effect.Effect<never> => Effect.interrupt,
       );
 
+      const failed = Exit.isFailure(exit);
+      const shape = terminalCauseShapeOf(exit);
+
       expect(attempts).toBe(1);
-      expect(Exit.isFailure(exit)).toBe(true);
-      expect(terminalCauseShapeOf(exit)).toBe('die=false typedFailure=false interruptedOnly=true');
+      expect(failed).toBe(true);
+      expect(shape).toBe('die=false typedFailure=false interruptedOnly=true');
     }),
   );
 });

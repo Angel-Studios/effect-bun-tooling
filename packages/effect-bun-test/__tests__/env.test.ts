@@ -72,8 +72,9 @@ describe('testConfigLayer', () => {
   it.effect('a key absent from the map is genuinely absent, not empty', () =>
     Effect.gen(function* () {
       const exit = yield* Effect.exit(Config.string('NOT_IN_THE_MAP'));
+      const message = configErrorMessage(exit);
 
-      expect(configErrorMessage(exit)).toContain('NOT_IN_THE_MAP');
+      expect(message).toContain('NOT_IN_THE_MAP');
     }).pipe(Effect.provide(testConfigLayer({ SOMETHING_ELSE: 'x' }))),
   );
 
@@ -87,7 +88,9 @@ describe('testConfigLayer', () => {
       const exit = yield* Effect.exit(Config.string(key)).pipe(
         Effect.provide(testConfigLayer({ UNRELATED: 'x' })),
       );
-      expect(configErrorMessage(exit)).toContain(key);
+      const message = configErrorMessage(exit);
+
+      expect(message).toContain(key);
     }),
   );
 
@@ -114,7 +117,9 @@ describe('testConfigLayer', () => {
       const dotted = yield* Effect.exit(nested).pipe(
         Effect.provide(testConfigLayer({ 'DB.HOST': 'db.example.test' })),
       );
-      expect(configErrorMessage(dotted)).toContain('HOST');
+      const message = configErrorMessage(dotted);
+
+      expect(message).toContain('HOST');
     }),
   );
 });

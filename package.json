@@ -30,9 +30,10 @@
     "check": "biome check --write --no-errors-on-unmatched --error-on-warnings",
     "check:ci": "biome check --reporter=github --error-on-warnings",
     "tsc": "tsc --noEmit && bun run --filter '@packages/*' tsc",
+    "lint:effect": "effect-tsgo diagnostics --project tsconfig.json && bun run --filter '@packages/*' lint:effect",
     "test:unit:once": "bun test && bun run --filter '@packages/*' test:unit:once",
     "test:e2e": "bun test ./__e2e__/*.e2e.test.ts",
-    "dod": "bun run tsc && bun run test:unit:once && bun run check:ci",
+    "dod": "bun run tsc && bun run lint:effect && bun run test:unit:once && bun run check:ci",
     "pack:workspace": "bun scripts/pack-workspace.ts",
     "version:set": "bun scripts/set-version.ts"
   },

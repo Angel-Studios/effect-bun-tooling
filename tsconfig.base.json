@@ -10,6 +10,7 @@
         "ignoreEffectWarningsInTscExitCode": false,
         "ignoreEffectErrorsInTscExitCode": false,
         "diagnosticSeverity": {
+          "anyUnknownInErrorContext": "error",
           "catchAllToMapError": "error",
           "catchUnfailableEffect": "error",
           "classSelfMismatch": "error",
@@ -68,7 +69,6 @@
           "unnecessaryPipeChain": "error",
           "unsafeEffectTypeAssertion": "error",
           "unsupportedServiceAccessors": "error",
-          "anyUnknownInErrorContext": "message",
           "asyncFunction": "message",
           "extendsNativeError": "message",
           "globalDate": "message",
