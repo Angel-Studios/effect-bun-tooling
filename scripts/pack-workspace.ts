@@ -2,6 +2,7 @@
 
 import { mkdirSync, rmSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { buildAll } from './build-packages';
 import { publishablePackages, repoRoot, tarballName } from './workspace';
 
 export const DEFAULT_DESTINATION = join(repoRoot, 'dist-tarballs');
@@ -19,7 +20,14 @@ export const packOne = (dir: string, destination: string): string => {
   return join(destination, basename(result.stdout.toString().trim()));
 };
 
+/**
+ * Builds before packing, always. `files` ships `dist` and nothing else, so a tarball packed
+ * against a stale or absent `dist` is not a degraded release — it is an empty one, and it would
+ * pack without complaint.
+ */
 export const packAll = (destination: string = DEFAULT_DESTINATION): readonly string[] => {
+  buildAll();
+
   rmSync(destination, { recursive: true, force: true });
   mkdirSync(destination, { recursive: true });
 

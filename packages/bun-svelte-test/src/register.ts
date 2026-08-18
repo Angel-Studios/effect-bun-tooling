@@ -4,10 +4,10 @@ import { join, resolve as resolvePath } from 'node:path';
 import { plugin } from 'bun';
 import * as Cause from 'effect/Cause';
 import * as Effect from 'effect/Effect';
-import { resetNavigation } from './app-doubles/navigation';
-import { resetPage } from './app-doubles/state';
-import { registerDom, registerResetHook, resetDom } from './dom';
-import { deriveBrowserSubstitutions, SUBSTITUTION_ROOTS, sveltePlugin } from './plugin';
+import { resetNavigation } from './app-doubles/navigation.ts';
+import { resetPage } from './app-doubles/state.ts';
+import { registerDom, registerResetHook, resetDom } from './dom.ts';
+import { deriveBrowserSubstitutions, SUBSTITUTION_ROOTS, sveltePlugin } from './plugin.ts';
 
 const TESTING_LIBRARY_SPECIFIER = '@testing-library/svelte';
 const SVELTE_KIT_TSCONFIG = '.svelte-kit/tsconfig.json';

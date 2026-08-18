@@ -1,6 +1,6 @@
 {
   "name": "@packages/fixture-residue",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "The fixture-residue CONVENTION: the `.test-fixtures` directory name, the `<label>--<host>--<pid>--<random>` ownership-token format, owner liveness, entry classification, the sweep itself, and its rendering. Shared by the component that MINTS conforming directories (@packages/effect-bun-test/fixture-root) and any tooling plane that INSPECTS them and enforces that none outlives its suite. Zero runtime dependencies, node builtins only, so a compiled tooling binary can depend on it without dragging in a test harness.",
   "license": "MIT",
   "repository": {
@@ -11,10 +11,13 @@
   "homepage": "https://github.com/Angel-Studios/effect-bun-tooling/tree/main/packages/fixture-residue",
   "type": "module",
   "exports": {
-    "./sweep": "./src/sweep.ts"
+    "./sweep": {
+      "types": "./dist/sweep.d.ts",
+      "default": "./dist/sweep.js"
+    }
   },
   "files": [
-    "src",
+    "dist",
     "README.md",
     "LICENSE"
   ],
@@ -23,6 +26,7 @@
   },
   "scripts": {
     "tsc": "tsc --noEmit",
+    "build:types": "tsc --project tsconfig.build.json",
     "lint:effect": "effect-tsgo diagnostics --project tsconfig.json",
     "check": "biome check src/ __tests__/",
     "test:unit:once": "bun test"

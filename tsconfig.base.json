@@ -84,9 +84,9 @@
           "cryptoRandomUUID": "off",
           "deterministicKeys": "off",
           "globalConsole": "off",
-          "globalRandom": "off",
+          "globalRandom": "error",
           "globalTimers": "off",
-          "newPromise": "off",
+          "newPromise": "error",
           "preferSchemaOverJson": "off",
           "unnecessaryArrowBlock": "off"
         }
@@ -104,6 +104,7 @@
     "allowUnusedLabels": false,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true
   }
 }

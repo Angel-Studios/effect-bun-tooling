@@ -3,6 +3,10 @@ onlyFailures = true
 coverageThreshold = { lines = 0.80, functions = 0.80, statements = 0.80 }
 coverageReporter = ["text", "lcov"]
 coveragePathIgnorePatterns = [
+  # Build output. bun's coverage reporter SCANS the package directory rather than reporting only
+  # what a test loaded, so `dist/` lands in the report at 0% and drags the threshold under without
+  # a single test having executed it.
+  "dist/**",
   "src/types.ts",
   "src/tag.ts",
 ]

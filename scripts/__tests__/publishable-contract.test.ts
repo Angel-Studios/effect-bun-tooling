@@ -2,7 +2,17 @@ import { describe, expect, it } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { bareImportsOf, typeScriptFiles } from '../imports';
-import { publishablePackages, readManifest, repoRoot, workspacePackages } from '../workspace';
+import {
+  DIST_DIR,
+  publishablePackages,
+  readManifest,
+  repoRoot,
+  SOURCE_DIR,
+  sourceOfDistTarget,
+  WORKSPACE_SCOPE,
+  workspacePackages,
+  workspaceSiblingsOf,
+} from '../workspace';
 
 type DepMap = Readonly<Record<string, string>>;
 
@@ -13,29 +23,26 @@ type PublishManifest = {
   readonly publishConfig?: Readonly<Record<string, unknown>>;
   readonly repository?: { readonly type?: string; readonly url?: string; readonly directory?: string };
   readonly files?: readonly string[];
-  readonly exports?: Readonly<Record<string, string>>;
+  readonly exports?: Readonly<Record<string, { readonly types?: string; readonly default?: string }>>;
   readonly main?: string;
   readonly module?: string;
   readonly types?: string;
   readonly dependencies?: DepMap;
   readonly devDependencies?: DepMap;
   readonly peerDependencies?: DepMap;
+  readonly peerDependenciesMeta?: Readonly<Record<string, unknown>>;
   readonly optionalDependencies?: DepMap;
 };
 
-const PACKED_DEP_FIELDS = ['dependencies', 'peerDependencies', 'optionalDependencies'] as const;
+/** The fields that survive `bun pm pack` into a consumer's install graph. */
+const PACKED_DEP_FIELDS = ['dependencies', 'optionalDependencies'] as const;
 const PUBLISHED_SCOPE = '@packages/';
-const CROSS_BOUNDARY_SINGLETONS = ['effect', 'svelte'];
 
-/**
- * A peer range must stay open so a consumer can dedupe the singleton onto one
- * copy — EXCEPT when it targets a prerelease. npm range semantics do not admit
- * prereleases the way they admit stable versions (`^4.0.0` matches no
- * `4.0.0-rc.*`), and a prerelease line can break between builds, so an exact
- * pin is the honest declaration until the dependency ships stable.
- */
-const isAcceptablePeerRange = (range: string): boolean =>
-  /^[\^~>]/.test(range) || /-(?:rc|beta|alpha|next)\./.test(range);
+/** A specifier a consumer's package manager cannot resolve on its own. `workspace:` is meaningful
+ *  only inside this repo, and the `@packages` scope is not ownable on npm, so either one packed
+ *  into a manifest turns a plain install into a manual `overrides` exercise. */
+const RESOLVES_FOR_A_CONSUMER = (name: string, range: string): boolean =>
+  !name.startsWith(WORKSPACE_SCOPE) && !range.startsWith('workspace:') && !range.startsWith('catalog:');
 
 const publishManifest = (manifestPath: string): PublishManifest =>
   JSON.parse(readFileSync(manifestPath, 'utf8')) as PublishManifest;
@@ -64,22 +71,30 @@ describe('publishable package contract', () => {
         expect(manifest.repository?.directory).toBe(pkg.dir.slice(repoRoot.length + 1));
       });
 
-      it('ships src and the license text, and nothing else', () => {
-        expect(manifest.files).toEqual(['src', 'README.md', 'LICENSE']);
+      it('ships the build output and the license text, and nothing else', () => {
+        expect(manifest.files).toEqual([DIST_DIR, 'README.md', 'LICENSE']);
       });
 
-      it('exports source TypeScript only, so no build step can be required', () => {
-        const targets = Object.values(manifest.exports ?? {});
-        expect(targets.length).toBeGreaterThan(0);
-        for (const target of targets) {
-          expect({ target, sourceTs: target.startsWith('./src/') && target.endsWith('.ts') }).toEqual({
-            target,
-            sourceTs: true,
+      it('exports built JavaScript with a declaration beside it, never source TypeScript', () => {
+        const entries = Object.entries(manifest.exports ?? {});
+        expect(entries.length).toBeGreaterThan(0);
+        for (const [subpath, entry] of entries) {
+          expect({ subpath, ...entry }).toEqual({
+            subpath,
+            types: `./${DIST_DIR}/${subpath === '.' ? 'index' : subpath.slice(2)}.d.ts`,
+            default: `./${DIST_DIR}/${subpath === '.' ? 'index' : subpath.slice(2)}.js`,
           });
         }
       });
 
-      it('declares no main, module, or types field that would point at an unbuilt path', () => {
+      it('exports only targets the build has a source file for', () => {
+        for (const entry of Object.values(manifest.exports ?? {})) {
+          const source = join(pkg.dir, sourceOfDistTarget(entry.default ?? ''));
+          expect({ source, present: existsSync(source) }).toEqual({ source, present: true });
+        }
+      });
+
+      it('declares no main, module, or types field competing with the exports map', () => {
         expect({ main: manifest.main, module: manifest.module, types: manifest.types }).toEqual({
           main: undefined,
           module: undefined,
@@ -87,64 +102,78 @@ describe('publishable package contract', () => {
         });
       });
 
-      it('keeps every cross-boundary singleton out of dependencies', () => {
-        for (const singleton of CROSS_BOUNDARY_SINGLETONS) {
-          expect({ singleton, declaredAsDependency: singleton in (manifest.dependencies ?? {}) }).toEqual({
-            singleton,
-            declaredAsDependency: false,
-          });
-        }
+      it('declares NO peer dependency, which is the whole point of shipping a build', () => {
+        expect({
+          peerDependencies: manifest.peerDependencies,
+          peerDependenciesMeta: manifest.peerDependenciesMeta,
+        }).toEqual({ peerDependencies: undefined, peerDependenciesMeta: undefined });
       });
 
-      it('resolves catalog specifiers only in devDependencies, which are never packed', () => {
+      it('packs only ranges a consumer can resolve with no overrides and no workspace of their own', () => {
         for (const field of PACKED_DEP_FIELDS) {
           for (const [dep, range] of Object.entries(manifest[field] ?? {})) {
-            expect({ field, dep, catalog: range.startsWith('catalog:') }).toEqual({
+            expect({ field, dep, range, resolves: RESOLVES_FOR_A_CONSUMER(dep, range) }).toEqual({
               field,
               dep,
-              catalog: false,
+              range,
+              resolves: true,
             });
           }
         }
       });
 
-      it('declares every peer dependency as a range, or as an exact pin when it targets a prerelease', () => {
-        for (const [dep, range] of Object.entries(manifest.peerDependencies ?? {})) {
-          expect({ dep, range, ranged: isAcceptablePeerRange(range) }).toEqual({
-            dep,
-            range,
-            ranged: true,
+      it('declares every package its shipped source imports, unless the build bundles it away', () => {
+        const declared = new Set([
+          ...Object.keys(manifest.dependencies ?? {}),
+          ...Object.keys(manifest.optionalDependencies ?? {}),
+        ]);
+        const bundled = new Set(workspaceSiblingsOf(pkg, packages).map((sibling) => sibling.manifest.name));
+
+        for (const imported of bareImportsOf(typeScriptFiles(join(pkg.dir, SOURCE_DIR)))) {
+          expect({ imported, reachable: declared.has(imported) || bundled.has(imported) }).toEqual({
+            imported,
+            reachable: true,
           });
         }
       });
 
-      it('declares every package its shipped source imports, so a consumer resolves all of them', () => {
-        const declared = new Set([
-          ...Object.keys(manifest.dependencies ?? {}),
-          ...Object.keys(manifest.peerDependencies ?? {}),
-          ...Object.keys(manifest.optionalDependencies ?? {}),
-        ]);
-        for (const imported of bareImportsOf(typeScriptFiles(join(pkg.dir, 'src')))) {
-          expect({ imported, declared: declared.has(imported) }).toEqual({ imported, declared: true });
+      it('imports no devDependency from shipped source except a sibling the build bundles', () => {
+        const bundled = new Set(workspaceSiblingsOf(pkg, packages).map((sibling) => sibling.manifest.name));
+        const devOnly = new Set(
+          Object.keys(manifest.devDependencies ?? {}).filter(
+            (dep) => !(dep in (manifest.dependencies ?? {})) && !bundled.has(dep),
+          ),
+        );
+        for (const imported of bareImportsOf(typeScriptFiles(join(pkg.dir, SOURCE_DIR)))) {
+          expect({ imported, devOnly: devOnly.has(imported) }).toEqual({ imported, devOnly: false });
         }
       });
 
-      it('never imports a devDependency from shipped source, because a consumer installs none of them', () => {
-        const devOnly = new Set(
-          Object.keys(manifest.devDependencies ?? {}).filter(
-            (dep) => !(dep in (manifest.dependencies ?? {})) && !(dep in (manifest.peerDependencies ?? {})),
-          ),
-        );
-        for (const imported of bareImportsOf(typeScriptFiles(join(pkg.dir, 'src')))) {
-          expect({ imported, devOnly: devOnly.has(imported) }).toEqual({ imported, devOnly: false });
+      it('imports every relative specifier with its extension, which a `nodenext` consumer requires in the emitted declarations', () => {
+        const EXTENSIONLESS = /(?:from|import\s*\()\s*'(\.[^']*)'/g;
+        for (const file of typeScriptFiles(join(pkg.dir, SOURCE_DIR))) {
+          for (const [, specifier] of readFileSync(file, 'utf8').matchAll(EXTENSIONLESS)) {
+            expect({ file, specifier, extended: specifier?.endsWith('.ts') }).toEqual({
+              file,
+              specifier,
+              extended: true,
+            });
+          }
         }
       });
     });
   }
 
-  it('extracts bare imports from shipped source, so the two import gates above are not vacuous', () => {
-    const across = packages.flatMap((pkg) => [...bareImportsOf(typeScriptFiles(join(pkg.dir, 'src')))]);
+  it('extracts bare imports from shipped source, so the import gates above are not vacuous', () => {
+    const across = packages.flatMap((pkg) => [...bareImportsOf(typeScriptFiles(join(pkg.dir, SOURCE_DIR)))]);
     expect(across).toContain('effect');
+  });
+
+  it('finds the workspace sibling the build is meant to bundle, so that carve-out is not vacuous either', () => {
+    const bundled = packages.flatMap((pkg) =>
+      workspaceSiblingsOf(pkg, packages).map((sibling) => sibling.manifest.name),
+    );
+    expect(bundled).toContain('@packages/fixture-residue');
   });
 });
 

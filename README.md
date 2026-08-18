@@ -1,8 +1,8 @@
 # effect-bun-tooling
 
-General-purpose Effect + Bun test tooling, published as **source TypeScript with no
-build step**. Every package's `exports` map points at `./src/*.ts`; consumers resolve
-and execute the TypeScript directly under Bun.
+General-purpose Effect + Bun test tooling, published as a **built `dist` that imposes no peer
+dependencies**. Every package's `exports` map points at `./dist/*.js` with a `./dist/*.d.ts`
+beside it; a consumer names the tarball and declares nothing else.
 
 ## Packages
 
@@ -16,7 +16,7 @@ and execute the TypeScript directly under Bun.
 
 ## Consuming
 
-Requires a runtime that executes TypeScript directly (Bun) and a TypeScript
+Requires Bun at runtime — `bun:test` is imported by the harness itself — and a TypeScript
 `moduleResolution` that honours `exports` (`bundler`, `node16`, or `nodenext`).
 
 Packages are named under `@packages/*`, which is not an ownable npm scope. Distribution is
@@ -26,7 +26,7 @@ account and no `npm login`.
 ```jsonc
 {
   "dependencies": {
-    "@packages/uuid-effect": "https://github.com/Angel-Studios/effect-bun-tooling/releases/download/v0.2.1/packages-uuid-effect-0.2.1.tgz"
+    "@packages/uuid-effect": "https://github.com/Angel-Studios/effect-bun-tooling/releases/download/v0.3.0/packages-uuid-effect-0.3.0.tgz"
   }
 }
 ```
@@ -35,48 +35,113 @@ Both forms resolve under `bun install`, and neither consults a registry for the 
 scope. Publishing these names to npmjs is not possible; adopting the registry path would require
 first owning a real scope.
 
-Only `bun install` is verified. The `__e2e__` suite proves a bun consumer resolves the packed
-tarballs and runs code through them; no other package manager is exercised. Other managers may
-work, but where one of these packages depends on another the consumer must override the whole
-transitive closure, not just the package it names directly — `__e2e__` proves the partial case
-fails.
+That manifest entry is the whole integration. **No package here declares a single peer
+dependency**, and none asks a consumer to write an `overrides` entry.
 
-A `file:` path to the same tarball carries the same CONTENTS, which is what the `__e2e__` proof
-uses, so the suite covers contents and closure resolution but not the Release-URL fetch itself.
+### Nothing to declare
 
-`effect` is a **peer** dependency of every package here. It is never bundled and never
-declared as a runtime dependency, because a second copy of `effect` in a consumer's tree
-gives `Context.Service` a second identity and services stop resolving.
+`effect`, `svelte`, `happy-dom` and `@types/bun` are ordinary `dependencies`, so a package
+manager installs them unprompted. A consumer never names them, never pins them, and never sees a
+peer warning.
 
-That peer is declared as the exact pin `4.0.0-rc.109`, not a range. Effect v4 is still a release
-candidate — `latest` on npm remains `3.x` — and npm range semantics do not admit prereleases the
-way they admit stable versions (`^4.0.0` matches no `4.0.0-rc.*`), so a range here would be either
-inert or a standing invitation for the next RC to break the harness. When v4 ships stable the pin
-widens to `^4.0.0`.
+`effect` is declared as the range `>=4.0.0-rc.109 <5` rather than an exact pin, so a consumer
+already on a later v4 RC — or on v4 stable once it ships — dedupes onto the copy they have instead
+of installing a second one. These packages require Effect **v4**; they do not resolve against
+`3.x`. A consumer still on v3 stays on the `v0.2.1` tarballs, which keep working because they are
+pinned by URL.
 
-These packages therefore require Effect **v4** and no longer resolve against `3.x`. A consumer
-still on v3 stays on the `v0.2.1` tarballs, which keep working because they are pinned by URL.
-
-`@effect/platform` is **no longer a peer dependency at all**. v4 folded it into core: `Command` and
+`@effect/platform` is not a dependency at all. v4 folded it into core: `Command` and
 `CommandExecutor` became `effect/unstable/process`, and `@effect/platform/Error` became
 `effect/PlatformError`. There is no v4 release of `@effect/platform`, and none is needed.
 
+### Why `effect` is a dependency and not a bundled copy
+
+The published JavaScript could inline `effect` and depend on nothing whatsoever. It deliberately
+does not, for a type-level reason rather than a runtime one: the exported signatures are written in
+Effect's own types — `it.effect` takes an `Effect.Effect<A, E, R>`, `it.layer` takes a
+`Layer.Layer<R>` — and those have to be the SAME types the consumer's `effect` provides. Vendoring
+would mean rolling up Effect's entire declaration surface into each package and typing a consumer's
+test callbacks against that copy instead of against their own install.
+
+(The runtime hazard the v3-era design guarded against is largely gone: Effect v4 identifies its
+values by string type IDs — `"~effect/Effect"`, `"~effect/Context"` — and keys a `Context` by the
+service key's string, so two copies of v4 do interoperate. It is the types, not the identities,
+that keep `effect` external.)
+
+`svelte` is external for a stronger reason: `bun-svelte-test` compiles a consumer's components,
+and compiler output imports `svelte/internal/client` at runtime. Only the consumer's own svelte
+can satisfy that.
+
+### What IS bundled
+
+`@packages/fixture-residue` is folded into `@packages/effect-bun-test`'s `dist` — its JavaScript by
+the bundler, its declarations copied under `dist/_bundled/` with the specifiers repointed. It stays
+separately publishable for tooling that wants it on its own, but a consumer of the test harness
+never resolves the name. That matters because `@packages` is not an ownable scope: a dependency on
+it resolves nowhere, and it was exactly this closure that used to force consumers to hand-write
+`overrides` for packages they had never heard of.
+
+### What is verified
+
+Only `bun install` is verified. The `__e2e__` suite installs the packed tarballs into a throwaway
+consumer that declares nothing but the tarballs themselves, then proves that consumer
+
+- installs with no `overrides` and no lockfile present,
+- runs a consumer-built `Effect` through a service the packages define,
+- resolves exactly one copy of `effect`, and
+- typechecks against the shipped `.d.ts` under both `bundler` and `nodenext`, with
+  `skipLibCheck` **off**.
+
+No other package manager is exercised. A `file:` path to the same tarball carries the same
+CONTENTS, which is what the proof uses, so the suite covers contents and resolution but not the
+Release-URL fetch itself.
+
 Each package's `exports` is an explicit subpath map rather than a `./*` wildcard, so a module
 the map does not name is not reachable from a consumer.
+
+### The build
+
+`bun run build` writes each package's `dist`:
+
+- **`bun build`** emits the JavaScript, bundling workspace siblings and keeping every installed
+  dependency external. It also restores the `node:` prefix the bundler drops, so a shipped
+  `import` cannot bind to a consumer's userland `fs` or `path`.
+- **`tsc --emitDeclarationOnly`**, through `bun run` so the pinned TypeScript 7 is used and no
+  node process starts, emits the `.d.ts`.
+
+Entry points are derived from each manifest's `exports` map, so a subpath nobody exports is never
+built and a subpath that is exported cannot be forgotten. Relative specifiers in shipped source
+carry a `.ts` extension — TypeScript resolves `./x.ts` to `./x.d.ts`, and an extensionless
+specifier inside a published declaration is a hard error for any consumer on `node16` or
+`nodenext`. It is the same form `effect` itself ships.
 
 ## Versioning
 
 All packages share one version and ship on one tag. `bun scripts/set-version.ts <version>`
 rewrites the root and every workspace package; `git tag v<version>` triggers the release
-workflow, which packs each package, proves a consumer resolves the packed tarballs, and
-attaches them to a GitHub Release. Nothing is published to a registry.
+workflow, which builds and packs each package, proves a consumer installs the packed tarballs
+with nothing else declared, and attaches them to a GitHub Release. Nothing is published to a
+registry.
 
 ## Development
 
 ```sh
 bun install
-bun run dod     # tsc + bun test + biome
+bun run build       # every package's dist, which is what a consumer installs
+bun run dod         # build + tsc + effect-tsgo + bun test + biome
+bun run test:e2e    # build, pack, then install the tarballs into a throwaway consumer
 ```
+
+**The build comes first, and `dod` runs it first for that reason.** In-repo code imports workspace
+siblings by package name — `scripts/fixture-root.ts` reaches for `@packages/fixture-residue/sweep`,
+`bun-svelte-test`'s suite for `@packages/effect-bun-test` — and those names now resolve through an
+`exports` map that points at `dist`. On a fresh checkout `bun run tsc` therefore fails until a build
+has run, with a plain `Cannot find module`. `bun run dod` and `bun run test:e2e` each build first so
+neither can be run out of order; a bare `bun run tsc` or `bun test` cannot, so run `bun run build`
+after `bun install`.
+
+The build bootstraps itself: `buildOrder` puts a bundled sibling ahead of its dependent, so
+`fixture-residue` is built before `effect-bun-test` needs it.
 
 **bun is the only runtime executed here — node is never spawned**, and CI installs no node
 toolchain. Two settings in `bunfig.toml` hold that, both closing paths that shell out silently

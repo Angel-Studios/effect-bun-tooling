@@ -1,10 +1,9 @@
 import { afterAll, describe, expect, it } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join } from 'node:path';
 import { makeFixtureRoot } from '../scripts/fixture-root';
-import { typeScriptFiles } from '../scripts/imports';
 import { packAll, packOne } from '../scripts/pack-workspace';
-import { publishablePackages, tarballName } from '../scripts/workspace';
+import { DIST_DIR, distFiles, publishablePackages, tarballName } from '../scripts/workspace';
 
 const PACK_TIMEOUT_MS = 300_000;
 
@@ -27,18 +26,10 @@ const archiveEntries = (tarball: string): readonly string[] => {
     .sort();
 };
 
-const expectedEntries = (packageDir: string): readonly string[] =>
-  [
-    ...ROOT_ENTRIES,
-    ...typeScriptFiles(join(packageDir, 'src')).map(
-      (file) => `package/src/${relative(join(packageDir, 'src'), file)}`,
-    ),
-  ].sort();
-
 const destination = join(fixtures.path(), 'dist');
 const packed = packAll(destination);
 
-describe('the produced archive carries only source TypeScript, a manifest and the licence text', () => {
+describe('the produced archive carries the build output, a manifest and the licence text', () => {
   it('packs one tarball per publishable package', () => {
     expect(packed.length).toBe(publishablePackages().length);
   });
@@ -46,23 +37,37 @@ describe('the produced archive carries only source TypeScript, a manifest and th
   for (const pkg of publishablePackages()) {
     const tarball = join(destination, tarballName(pkg.manifest));
 
-    it(`ships exactly the expected file set in ${pkg.manifest.name}`, () => {
-      expect(archiveEntries(tarball)).toEqual(expectedEntries(pkg.dir));
+    it(`ships exactly the built dist in ${pkg.manifest.name}, no more and no less`, () => {
+      const expected = [
+        ...ROOT_ENTRIES,
+        ...distFiles(pkg).map((file) => `package/${DIST_DIR}/${file}`),
+      ].sort();
+      expect(archiveEntries(tarball)).toEqual(expected);
     });
 
-    it(`ships no non-TypeScript stowaway under ${pkg.manifest.name}'s src/, which the files allowlist would let through`, () => {
-      const strays = archiveEntries(tarball).filter(
-        (entry) => entry.startsWith('package/src/') && !entry.endsWith('.ts'),
+    it(`ships no TypeScript source in ${pkg.manifest.name}, only the declarations beside the build`, () => {
+      const source = archiveEntries(tarball).filter(
+        (entry) => entry.endsWith('.ts') && !entry.endsWith('.d.ts'),
       );
-      expect(strays).toEqual([]);
+      expect(source).toEqual([]);
+    });
+
+    it(`ships every target ${pkg.manifest.name}'s exports map names, so no subpath resolves to a missing file`, () => {
+      const entries = new Set(archiveEntries(tarball));
+      for (const entry of Object.values(pkg.manifest.exports ?? {})) {
+        for (const target of [entry.default, entry.types]) {
+          const archived = `package/${target.slice('./'.length)}`;
+          expect({ target, shipped: entries.has(archived) }).toEqual({ target, shipped: true });
+        }
+      }
     });
   }
 
   it(
-    'CONTROL: a repo-root marker planted under src/ lands inside the allowlist, and this check catches it',
+    'CONTROL: a marker planted under dist/ lands inside the allowlist, and this check catches it',
     () => {
       const packageDir = join(fixtures.path(), 'stowaway-package');
-      mkdirSync(join(packageDir, 'src'), { recursive: true });
+      mkdirSync(join(packageDir, DIST_DIR), { recursive: true });
       writeFileSync(
         join(packageDir, 'package.json'),
         `${JSON.stringify(
@@ -70,8 +75,8 @@ describe('the produced archive carries only source TypeScript, a manifest and th
             name: '@packages/stowaway-fixture',
             version: '0.0.0',
             type: 'module',
-            exports: { '.': './src/index.ts' },
-            files: ['src', 'README.md', 'LICENSE'],
+            exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
+            files: [DIST_DIR, 'README.md', 'LICENSE'],
           },
           null,
           2,
@@ -79,13 +84,17 @@ describe('the produced archive carries only source TypeScript, a manifest and th
       );
       writeFileSync(join(packageDir, 'README.md'), '# stowaway fixture\n');
       writeFileSync(join(packageDir, 'LICENSE'), 'MIT\n');
-      writeFileSync(join(packageDir, 'src', 'index.ts'), 'export const value = 1;\n');
-      writeFileSync(join(packageDir, 'src', 'bun.lock'), '{}\n');
+      writeFileSync(join(packageDir, DIST_DIR, 'index.js'), 'export const value = 1;\n');
+      writeFileSync(join(packageDir, DIST_DIR, 'index.d.ts'), 'export declare const value: number;\n');
+      writeFileSync(join(packageDir, DIST_DIR, 'index.ts'), 'export const value = 1;\n');
+      writeFileSync(join(packageDir, DIST_DIR, 'bun.lock'), '{}\n');
 
       const entries = archiveEntries(packOne(packageDir, destination));
 
-      expect(entries).toContain('package/src/bun.lock');
-      expect(entries).not.toEqual(expectedEntries(packageDir));
+      expect(entries).toContain(`package/${DIST_DIR}/bun.lock`);
+      expect(entries.filter((entry) => entry.endsWith('.ts') && !entry.endsWith('.d.ts'))).toEqual([
+        `package/${DIST_DIR}/index.ts`,
+      ]);
     },
     PACK_TIMEOUT_MS,
   );

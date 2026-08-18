@@ -1,5 +1,5 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
-import { installCheckedPseudoSupport } from './checked-pseudo';
+import { installCheckedPseudoSupport } from './checked-pseudo.ts';
 
 export const DEFAULT_TEST_URL = 'http://localhost:3000/';
 

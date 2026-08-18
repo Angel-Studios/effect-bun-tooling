@@ -36,10 +36,10 @@ jobs:
       - name: dod
         run: bun run dod
 
-      - name: pack every publishable package
+      - name: build and pack every publishable package
         run: bun scripts/pack-workspace.ts
 
-      - name: prove a consumer resolves these tarballs, and inspect the archives, before any upload
+      - name: prove a consumer installs these tarballs with nothing else declared, before any upload
         run: bun run test:e2e
 
       - name: create the GitHub Release only when the tag does not already have one

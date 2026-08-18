@@ -1,6 +1,6 @@
 {
   "name": "@packages/uuid-effect",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Effect-native UUID service: crypto-entropy UUIDs injected through Effect context (mockable in tests, no PRNG downgrade)",
   "license": "MIT",
   "repository": {
@@ -11,13 +11,25 @@
   "homepage": "https://github.com/Angel-Studios/effect-bun-tooling/tree/main/packages/uuid-effect",
   "type": "module",
   "exports": {
-    "./tag": "./src/tag.ts",
-    "./types": "./src/types.ts",
-    "./layer.live": "./src/layer.live.ts",
-    "./layer.test": "./src/layer.test.ts"
+    "./tag": {
+      "types": "./dist/tag.d.ts",
+      "default": "./dist/tag.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "default": "./dist/types.js"
+    },
+    "./layer.live": {
+      "types": "./dist/layer.live.d.ts",
+      "default": "./dist/layer.live.js"
+    },
+    "./layer.test": {
+      "types": "./dist/layer.test.d.ts",
+      "default": "./dist/layer.test.js"
+    }
   },
   "files": [
-    "src",
+    "dist",
     "README.md",
     "LICENSE"
   ],
@@ -26,16 +38,16 @@
   },
   "scripts": {
     "tsc": "tsc --noEmit",
+    "build:types": "tsc --project tsconfig.build.json",
     "lint:effect": "effect-tsgo diagnostics --project tsconfig.json",
     "check": "biome check src/ __tests__/",
     "test:unit:once": "bun test --coverage"
   },
-  "peerDependencies": {
-    "effect": "4.0.0-rc.109"
+  "dependencies": {
+    "effect": ">=4.0.0-rc.109 <5"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
-    "effect": "catalog:",
     "typescript": "catalog:"
   }
 }

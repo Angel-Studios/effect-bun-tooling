@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { workspacePackages } from '../workspace';
+import { DIST_DIR, workspacePackages } from '../workspace';
 
 type BunfigTest = {
   readonly coverageThreshold?: unknown;
   readonly coverageReporter?: readonly string[];
+  readonly coveragePathIgnorePatterns?: readonly string[];
 };
 
 type ScriptedManifest = { readonly scripts?: Readonly<Record<string, string>> };
@@ -43,6 +44,12 @@ describe('an armed coverage threshold is a gate only if something passes --cover
 
     it(`reports ${pkg.manifest.name}'s coverage through a reporter bun evaluates the threshold against`, () => {
       expect(bunfigTest(pkg.dir).coverageReporter).toContain('text');
+    });
+
+    it(`excludes ${pkg.manifest.name}'s build output, which bun's reporter scans in even though no test loads it`, () => {
+      // Without this the emitted bundle reports 0% and sinks a threshold that source alone meets,
+      // which reads as a coverage regression in code nobody changed.
+      expect(bunfigTest(pkg.dir).coveragePathIgnorePatterns).toContain(`${DIST_DIR}/**`);
     });
   }
 

@@ -34,7 +34,7 @@ preload = ["@packages/bun-svelte-test/register"]
 | `./Foo.svelte` | `onLoad` -> `compile()` | nothing |
 | `./foo.svelte.ts` | `onLoad` -> type-strip -> `compileModule()` | nothing |
 | `$lib/*` | bun reads tsconfig `paths` from SvelteKit's generated `.svelte-kit/tsconfig.json` | run `svelte-kit sync` |
-| `$app/environment`, `$app/navigation`, `$app/state` | tsconfig `paths` -> the doubles in `src/app-doubles/` | declare them (below) |
+| `$app/environment`, `$app/navigation`, `$app/state` | tsconfig `paths` -> the doubles in `dist/app-doubles/` | declare them (below) |
 | `svelte`, `svelte/legacy`, `svelte/reactivity`, `svelte/store` | `onLoad` substitutes the browser build | nothing |
 
 There is **no `onResolve` anywhere in this package**: in bun 1.3.14 a runtime plugin's
@@ -57,13 +57,21 @@ files correctly reject it:
       "$lib/*": ["../src/lib/*"],
       "$app/types": ["../.svelte-kit/types/$app/types"],
 
-      "$app/environment": ["../../bun-svelte-test/src/app-doubles/environment.ts"],
-      "$app/navigation": ["../../bun-svelte-test/src/app-doubles/navigation.ts"],
-      "$app/state": ["../../bun-svelte-test/src/app-doubles/state.ts"]
+      // A path RELATIVE TO THIS FILE, into the installed package. `.js` serves both sides:
+      // bun loads the built module, and TypeScript maps `.js` to the `.d.ts` beside it.
+      "$app/environment": ["../node_modules/@packages/bun-svelte-test/dist/app-doubles/environment.js"],
+      "$app/navigation": ["../node_modules/@packages/bun-svelte-test/dist/app-doubles/navigation.js"],
+      "$app/state": ["../node_modules/@packages/bun-svelte-test/dist/app-doubles/state.js"]
     }
   }
 }
 ```
+
+**TRAP: the value must be a path, not a package specifier.** The obvious spelling —
+`["@packages/bun-svelte-test/app-doubles/state"]`, naming the exported subpath — does **not**
+resolve. Measured on bun 1.3.14: bun's tsconfig `paths` implementation resolves a relative path and
+fails a bare specifier with `Cannot find module '$app/state'`, with or without `baseUrl`. The
+exports map is unused on this route, so the path reaches into `dist/` directly.
 
 **What this file is for.** It is read by **bun at runtime**, which resolves tsconfig `paths`
 from the nearest tsconfig to the *importing* file — that is what gives test files `$app/*`
@@ -72,8 +80,8 @@ per-package choice: check what your own package's `include` covers rather than c
 command from here.
 
 This package itself declares the same three `$app/*` keys in its **root** `tsconfig.json`
-instead, because its `src/` is what the doubles live in and there is nothing to hide them
-from. A consumer with real `src/` code must scope them to the test directory as above, or
+instead, pointing at its own `src/`, because that is where the doubles live and there is
+nothing to hide them from. A consumer with real `src/` code must scope them to the test directory as above, or
 production code will resolve `$app/*` to the doubles.
 
 ## What the preload does, in order
@@ -85,7 +93,8 @@ production code will resolve `$app/*` to the doubles.
 2. Registers happy-dom globals via `@happy-dom/global-registrator`.
 3. Registers the loader plugin.
 4. **Asserts the svelte browser-build substitution took, and throws if not.**
-5. Eagerly imports `@testing-library/svelte` (optional peer) to wire its auto-cleanup.
+5. Eagerly imports `@testing-library/svelte`, if the consumer installed one, to wire its
+   auto-cleanup. It is probed for at runtime and declared as a dependency nowhere.
 6. Registers an automatic `afterEach` reset. Never opt-in.
 
 ### Why step 4 exists
@@ -273,11 +282,16 @@ serial, 0 pass / 55 fail with `--parallel` wired.
 
 ## Version coupling
 
-- **svelte** is a peer dependency: components compile with the *consumer's* svelte. A
-  consumer svelte bump re-verifies this package's fixture suite. The browser substitution
-  is derived from the installed version's `exports` map, so it survives most bumps — and
-  hard-fails loudly rather than silently if it ever does not.
-- **`@testing-library/svelte`** is an *optional* peer. Absent: the loader works, no
+- **svelte** is an ordinary `dependency` (`^5.56.8`), not a peer — a consumer declares nothing.
+  It is never bundled: components compile with whichever svelte resolves in the consumer's tree,
+  and compiler output imports `svelte/internal/client` at runtime, so a vendored copy would be
+  the wrong one. The `^` range lets a consumer's own svelte dedupe onto one copy; a bump
+  re-verifies this package's fixture suite. The browser substitution is derived from the installed
+  version's `exports` map, so it survives most bumps — and hard-fails loudly rather than silently
+  if it ever does not.
+- **`@testing-library/svelte`** is declared NOWHERE, by design. The loader probes for it at
+  preload time with `Bun.resolveSync` and a dynamic `import`, so it is a pure runtime opt-in
+  rather than an optional peer a consumer has to know to decline. Absent: the loader works, no
   auto-cleanup, no noise. Present but broken: hard failure. Those two cases are kept
   distinguishable on purpose.
 - Never import `@testing-library/svelte/vitest` — that subpath does `import { beforeEach }

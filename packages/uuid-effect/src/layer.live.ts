@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Effect, Layer } from 'effect';
-import { Uuid } from './tag';
-import type { UuidShape } from './types';
+import { Uuid } from './tag.ts';
+import type { UuidShape } from './types.ts';
 
 export const uuidLiveService: UuidShape = {
   next: Effect.sync(() => randomUUID()),

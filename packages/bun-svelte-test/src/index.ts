@@ -1,18 +1,18 @@
-import * as environment from './app-doubles/environment';
-import * as navigation from './app-doubles/navigation';
-import * as state from './app-doubles/state';
-import * as dom from './dom';
-import * as mountModule from './mount';
-import * as pluginModule from './plugin';
+import * as environment from './app-doubles/environment.ts';
+import * as navigation from './app-doubles/navigation.ts';
+import * as state from './app-doubles/state.ts';
+import * as dom from './dom.ts';
+import * as mountModule from './mount.ts';
+import * as pluginModule from './plugin.ts';
 
 export type {
   NavigatingDouble,
   PageDouble,
   SetPageInput,
   UpdatedDouble,
-} from './app-doubles/state';
-export type { MountedComponent } from './mount';
-export type { BrowserSubstitution } from './plugin';
+} from './app-doubles/state.ts';
+export type { MountedComponent } from './mount.ts';
+export type { BrowserSubstitution } from './plugin.ts';
 
 export const mountComponent = mountModule.mountComponent;
 

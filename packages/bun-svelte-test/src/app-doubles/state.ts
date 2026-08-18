@@ -1,5 +1,5 @@
 import * as Effect from 'effect/Effect';
-import { DEFAULT_TEST_URL } from '../dom';
+import { DEFAULT_TEST_URL } from '../dom.ts';
 
 export type PageDouble = {
   url: URL;

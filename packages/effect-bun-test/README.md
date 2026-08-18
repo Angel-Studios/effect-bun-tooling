@@ -183,10 +183,11 @@ lifecycle; `fixtureDirAtBase(prefix)` returns a single directory.
 
 - **The repo root is found by walking up from this module** looking for a `bun.lock` or `.git`
   marker, and it **throws** rather than falling back out-of-repo. Installed under `node_modules/`,
-  that walk therefore lands on the *consumer's* root — which is why this package ships `src/` only
+  that walk therefore lands on the *consumer's* root — which is why this package ships `dist/` only
   and no lockfile. A stray `bun.lock` inside the published tarball would stop the walk inside
   `node_modules` and mint every fixture in the wrong place; `bun pm pack` strips `.git` but **not**
-  `bun.lock`, so that is the marker the `__e2e__` contents check actually guards against.
+  `bun.lock`, so that is the marker the `__e2e__` contents check actually guards against. The walk
+  is unaffected by the move from `src/` to `dist/`: both sit one level below the package root.
 - Each directory carries a `<label>--<host>--<pid>--<random>` ownership token, so
   `@packages/fixture-residue/sweep` can tell a live suite's fixture from one a crashed run
   stranded. The first mint in a process reports pre-existing residue on stderr and does **not**

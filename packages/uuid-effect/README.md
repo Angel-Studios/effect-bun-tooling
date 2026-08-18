@@ -27,38 +27,16 @@ Effect.runSync(Effect.provide(Uuid.next, UuidTest(42)));
 
 ## Resolution requirements
 
-No build step: `exports` points at `./src/*.ts`. Consumers need a runtime that executes
-TypeScript directly (Bun) and a TypeScript `moduleResolution` honouring `exports`
-(`bundler`, `node16`, or `nodenext`). Pair `moduleResolution: "bundler"` with
-`module: "preserve"`; `module: "bundler"` is not a valid `tsc` value.
+Ships built JavaScript with declarations beside it: `exports` points at `./dist/*.js`, typed by
+`./dist/*.d.ts`. Consumers need a TypeScript `moduleResolution` honouring `exports` (`bundler`,
+`node16`, or `nodenext`). Pair `moduleResolution: "bundler"` with `module: "preserve"`;
+`module: "bundler"` is not a valid `tsc` value.
 
-`effect` is a peer dependency and resolves from the consumer's tree.
+**Nothing to declare.** `effect` is an ordinary `dependency`, installed for the consumer rather
+than demanded from them. There are no peer dependencies.
 
-Because this package ships `.ts` source rather than `.d.ts`, its files become part of the
-consumer's TypeScript program, and `src/layer.live.ts` imports `node:crypto`. The contract is
-therefore: **`@types/node` must be resolvable in the consumer's tree, and the consumer must load a
-type package that reaches it.** `@types/bun` satisfies both on its own — it depends on `bun-types`,
-which depends on `@types/node`, and whose own declarations import `node:*` modules by specifier —
-so `"types": ["bun"]` is sufficient and naming `node` is not required.
-
-Measured on TypeScript 7.0.2 against the packed tarball:
-
-| consumer configuration | `tsc --noEmit` |
-|---|---|
-| `@types/bun`, `"types": ["bun"]` | exit 0 |
-| `@types/bun` + `@types/node`, `"types": ["bun", "node"]` | exit 0 |
-| `@types/node`, `"types": ["node"]` | exit 0 |
-| `@types/bun`, `"types": ["bun"]`, `@types/node` deleted from disk | **exit 1** |
-| no node or bun typings at all | **exit 1** |
-
-Both failing rows report the same thing, and it is reported against this package's file inside the
-consumer's `node_modules`:
-
-```
-node_modules/@packages/uuid-effect/src/layer.live.ts(1,28): error TS2591: Cannot find name 'node:crypto'. Do you need to install type definitions for node? Try `npm i --save-dev @types/node` and then add 'node' to the types field in your tsconfig.
-```
-
-There is no way to exclude that file from the check instead: `skipLibCheck` covers `.d.ts` only, and
-`exclude`, `types: []` and `typeRoots: []` do not remove a file the program reached through an
-`import`. This is a property of source-shipping, so it applies to every package here, not just this
-one — a package importing `node:fs`, `node:os` or `node:path` carries exactly the same contract.
+Shipping `.d.ts` rather than `.ts` is what retires this package's old `@types/node` contract.
+`src/layer.live.ts` still imports `node:crypto`, but that import now lives in the emitted
+JavaScript, which no consumer typechecks — the declaration beside it names only the `Layer` type.
+A consumer no longer needs `@types/node` reachable to compile against this package, and no file of
+this package's becomes part of their TypeScript program.

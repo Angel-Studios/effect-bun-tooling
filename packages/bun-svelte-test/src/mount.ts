@@ -1,5 +1,5 @@
 import { type Component, flushSync, mount, unmount } from 'svelte';
-import { registerTeardownHook } from './dom';
+import { registerTeardownHook } from './dom.ts';
 
 export type MountedComponent = {
   readonly container: HTMLElement;

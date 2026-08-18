@@ -38,4 +38,7 @@ Effect `Config` failures. Every `ConfigError` carries the `_tag` `'ConfigError'`
 discriminates nothing. Under Effect v4 a `ConfigError` wraps a `SchemaError` rather than carrying
 v3's `_op`, so assert the rendered message.
 
-`effect` is a peer dependency; it resolves from the consumer's tree so there is exactly one copy.
+`effect` is an ordinary `dependency`, not a peer: a consumer declares nothing, and the package
+manager dedupes it onto the copy they already have. It is never bundled — the signatures here are
+written in Effect's own `Exit`, `Cause`, `Option` and `Result` types, which have to be the same
+types the consumer's `effect` provides.

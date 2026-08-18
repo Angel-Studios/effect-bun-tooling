@@ -15,7 +15,7 @@ import * as Scope from 'effect/Scope';
 import * as fc from 'effect/testing/FastCheck';
 import * as TestClock from 'effect/testing/TestClock';
 
-import type * as BunTest from '../types';
+import type * as BunTest from '../types.ts';
 
 type TestServices = BunTest.TestServices;
 

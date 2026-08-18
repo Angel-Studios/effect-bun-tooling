@@ -1,6 +1,6 @@
 {
   "name": "@packages/effect-test-kit",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Cast-free, framework-agnostic test assertions for Effect tagged errors. expectTag / expectFailureTag / expectCauseFailureTag / expectLeftTag narrow a failure to a specific tagged-error member by its `_tag` discriminant, replacing `value as SpecificError` casts and `x instanceof SchemaError` guards with one typed helper that throws loudly on any mismatch, so a converted test still asserts.",
   "license": "MIT",
   "repository": {
@@ -11,10 +11,13 @@
   "homepage": "https://github.com/Angel-Studios/effect-bun-tooling/tree/main/packages/effect-test-kit",
   "type": "module",
   "exports": {
-    "./tagged": "./src/tagged.ts"
+    "./tagged": {
+      "types": "./dist/tagged.d.ts",
+      "default": "./dist/tagged.js"
+    }
   },
   "files": [
-    "src",
+    "dist",
     "README.md",
     "LICENSE"
   ],
@@ -23,16 +26,16 @@
   },
   "scripts": {
     "tsc": "tsc --noEmit",
+    "build:types": "tsc --project tsconfig.build.json",
     "lint:effect": "effect-tsgo diagnostics --project tsconfig.json",
     "check": "biome check src/ __tests__/",
     "test:unit:once": "bun test"
   },
-  "peerDependencies": {
-    "effect": "4.0.0-rc.109"
+  "dependencies": {
+    "effect": ">=4.0.0-rc.109 <5"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
-    "effect": "catalog:",
     "typescript": "catalog:"
   }
 }

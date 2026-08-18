@@ -3,8 +3,8 @@ import type * as Duration from 'effect/Duration';
 import type * as Effect from 'effect/Effect';
 import type * as Layer from 'effect/Layer';
 import type * as Scope from 'effect/Scope';
-import * as internal from './internal/internal';
-import type { API, Methods, MethodsNonLive, Tester, TestServices } from './types';
+import * as internal from './internal/internal.ts';
+import type { API, Methods, MethodsNonLive, Tester, TestServices } from './types.ts';
 
 export type {
   API,
@@ -19,7 +19,7 @@ export type {
   TestFunction,
   TestOptions,
   TestServices,
-} from './types';
+} from './types.ts';
 
 export const afterAll = bt.afterAll;
 

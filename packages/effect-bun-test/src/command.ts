@@ -1,4 +1,5 @@
 import * as Data from 'effect/Data';
+import * as Deferred from 'effect/Deferred';
 import type * as Duration from 'effect/Duration';
 import * as Effect from 'effect/Effect';
 import * as Exit from 'effect/Exit';
@@ -220,25 +221,30 @@ const readableFrom = (chunks: ReadonlyArray<Uint8Array>): ReadableStream<Uint8Ar
     },
   });
 
+// `ScriptedHandle` mirrors Bun's `Subprocess`, so `exited` has to be a real
+// promise for non-Effect callers. `Effect.runPromise` supplies it: `Effect.race`
+// runs the delay against a kill `Deferred`, and whichever wins interrupts the
+// loser — interrupting `Effect.sleep` clears its timer the way `clearTimeout`
+// did, so a killed handle leaves nothing pending.
 const makeHandle = (expectation: ScriptedExpectation, pid: number): ScriptedHandle => {
   const code = expectation.exitCode ?? 0;
   let exitCodeValue: number | null = null;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let settle: (code: number) => void = () => {};
+  const killed = Deferred.makeUnsafe<void>();
 
-  const settled = new Promise<number>((resolve) => {
-    settle = resolve;
-    if (expectation.delayMs === undefined) {
-      resolve(code);
-    } else {
-      timer = setTimeout(() => resolve(code), expectation.delayMs);
-    }
-  });
+  const settle =
+    expectation.delayMs === undefined
+      ? Effect.void
+      : Effect.race(Effect.sleep(expectation.delayMs), Deferred.await(killed));
 
-  const exited = settled.then((resolved) => {
-    exitCodeValue = resolved;
-    return resolved;
-  });
+  const exited = Effect.runPromise(
+    Effect.andThen(
+      settle,
+      Effect.sync(() => {
+        exitCodeValue = code;
+        return code;
+      }),
+    ),
+  );
 
   return {
     stdout: readableFrom(toChunks(expectation.stdout)),
@@ -249,11 +255,7 @@ const makeHandle = (expectation: ScriptedExpectation, pid: number): ScriptedHand
       return exitCodeValue;
     },
     kill: () => {
-      if (timer !== undefined) {
-        clearTimeout(timer);
-        timer = undefined;
-      }
-      settle(code);
+      Deferred.doneUnsafe(killed, Effect.void);
     },
   };
 };
