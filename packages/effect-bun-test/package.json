@@ -1,6 +1,6 @@
 {
   "name": "@packages/effect-bun-test",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Effect-native test harness on top of bun:test. it.effect / it.scoped / it.live / layer() replace inline Effect.runPromise, and it.effect runs on Effect's TestContext so virtual time is free. Vendored from Effect-TS/effect PR #6236 (@effect/bun-test, head 3f8d6e8) and extended with paved paths for env/config, scripted subprocesses, in-repo fixture roots, and tagged-error assertions.",
   "license": "MIT",
   "repository": {

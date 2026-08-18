@@ -26,7 +26,7 @@ account and no `npm login`.
 ```jsonc
 {
   "dependencies": {
-    "@packages/uuid-effect": "https://github.com/Angel-Studios/effect-bun-tooling/releases/download/v0.4.0/packages-uuid-effect-0.4.0.tgz"
+    "@packages/uuid-effect": "https://github.com/Angel-Studios/effect-bun-tooling/releases/download/v0.4.1/packages-uuid-effect-0.4.1.tgz"
   }
 }
 ```

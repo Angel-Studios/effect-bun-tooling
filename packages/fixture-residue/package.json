@@ -1,6 +1,6 @@
 {
   "name": "@packages/fixture-residue",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "The fixture-residue CONVENTION: the `.test-fixtures` directory name, the `<label>--<host>--<pid>--<random>` ownership-token format, owner liveness, entry classification, the sweep itself, and its rendering. Shared by the component that MINTS conforming directories (@packages/effect-bun-test/fixture-root) and any tooling plane that INSPECTS them and enforces that none outlives its suite. Zero runtime dependencies, node builtins only, so a compiled tooling binary can depend on it without dragging in a test harness.",
   "license": "MIT",
   "repository": {
