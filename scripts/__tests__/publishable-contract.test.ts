@@ -35,8 +35,24 @@ type PublishManifest = {
 };
 
 /** The fields that survive `bun pm pack` into a consumer's install graph. */
-const PACKED_DEP_FIELDS = ['dependencies', 'optionalDependencies'] as const;
+const PACKED_DEP_FIELDS = ['dependencies', 'peerDependencies', 'optionalDependencies'] as const;
 const PUBLISHED_SCOPE = '@packages/';
+
+/**
+ * A package that must exist exactly once in a consumer's tree, because values or compiled output
+ * cross the boundary between it and the consumer.
+ *
+ * Declared as a PEER rather than a dependency, on measured behaviour (bun 1.3.14): as a
+ * dependency, a consumer whose own copy falls outside the range gets a second one nested silently
+ * at exit 0; as a peer, they get `warn: incorrect peer dependency` and NO second copy. A consumer
+ * who declares nothing is unaffected either way — bun auto-installs a missing peer.
+ */
+const CROSS_BOUNDARY_SINGLETONS = ['effect', 'svelte'];
+
+/** A peer range must stay open, so a consumer can dedupe the singleton onto the copy they already
+ *  have. An exact pin is what made the previous peer declaration painful: it admitted precisely
+ *  one release and forced every consumer onto it. */
+const isOpenRange = (range: string): boolean => /^[\^~>]/.test(range);
 
 /** A specifier a consumer's package manager cannot resolve on its own. `workspace:` is meaningful
  *  only inside this repo, and the `@packages` scope is not ownable on npm, so either one packed
@@ -102,11 +118,31 @@ describe('publishable package contract', () => {
         });
       });
 
-      it('declares NO peer dependency, which is the whole point of shipping a build', () => {
-        expect({
-          peerDependencies: manifest.peerDependencies,
-          peerDependenciesMeta: manifest.peerDependenciesMeta,
-        }).toEqual({ peerDependencies: undefined, peerDependenciesMeta: undefined });
+      it('declares every cross-boundary singleton it imports as a PEER, never as a dependency', () => {
+        const imported = bareImportsOf(typeScriptFiles(join(pkg.dir, SOURCE_DIR)));
+        for (const singleton of CROSS_BOUNDARY_SINGLETONS) {
+          if (!imported.has(singleton)) continue;
+          expect({
+            singleton,
+            peer: singleton in (manifest.peerDependencies ?? {}),
+            dependency: singleton in (manifest.dependencies ?? {}),
+          }).toEqual({ singleton, peer: true, dependency: false });
+        }
+      });
+
+      it('peers ONLY cross-boundary singletons, so nothing else lands on a consumer to satisfy', () => {
+        for (const peer of Object.keys(manifest.peerDependencies ?? {})) {
+          expect({ peer, singleton: CROSS_BOUNDARY_SINGLETONS.includes(peer) }).toEqual({
+            peer,
+            singleton: true,
+          });
+        }
+      });
+
+      it('leaves every peer range open, so a consumer dedupes onto the copy they already have', () => {
+        for (const [dep, range] of Object.entries(manifest.peerDependencies ?? {})) {
+          expect({ dep, range, open: isOpenRange(range) }).toEqual({ dep, range, open: true });
+        }
       });
 
       it('packs only ranges a consumer can resolve with no overrides and no workspace of their own', () => {
@@ -125,6 +161,7 @@ describe('publishable package contract', () => {
       it('declares every package its shipped source imports, unless the build bundles it away', () => {
         const declared = new Set([
           ...Object.keys(manifest.dependencies ?? {}),
+          ...Object.keys(manifest.peerDependencies ?? {}),
           ...Object.keys(manifest.optionalDependencies ?? {}),
         ]);
         const bundled = new Set(workspaceSiblingsOf(pkg, packages).map((sibling) => sibling.manifest.name));
@@ -141,7 +178,10 @@ describe('publishable package contract', () => {
         const bundled = new Set(workspaceSiblingsOf(pkg, packages).map((sibling) => sibling.manifest.name));
         const devOnly = new Set(
           Object.keys(manifest.devDependencies ?? {}).filter(
-            (dep) => !(dep in (manifest.dependencies ?? {})) && !bundled.has(dep),
+            (dep) =>
+              !(dep in (manifest.dependencies ?? {})) &&
+              !(dep in (manifest.peerDependencies ?? {})) &&
+              !bundled.has(dep),
           ),
         );
         for (const imported of bareImportsOf(typeScriptFiles(join(pkg.dir, SOURCE_DIR)))) {

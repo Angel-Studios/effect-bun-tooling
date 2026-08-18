@@ -1,6 +1,6 @@
 {
   "name": "@packages/uuid-effect",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Effect-native UUID service: crypto-entropy UUIDs injected through Effect context (mockable in tests, no PRNG downgrade)",
   "license": "MIT",
   "repository": {
@@ -43,11 +43,12 @@
     "check": "biome check src/ __tests__/",
     "test:unit:once": "bun test --coverage"
   },
-  "dependencies": {
+  "peerDependencies": {
     "effect": ">=4.0.0-rc.109 <5"
   },
   "devDependencies": {
     "@types/bun": "catalog:",
+    "effect": "catalog:",
     "typescript": "catalog:"
   }
 }

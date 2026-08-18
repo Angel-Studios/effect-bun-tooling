@@ -25,6 +25,10 @@ afterAll(() => {
  *  entry, and proving that requirement is GONE is the point of this suite. */
 const BUNDLED_AWAY = '@packages/fixture-residue';
 
+/** An Effect v3 release: outside every peer range here, and a major these packages cannot work
+ *  against. Exactly the case a dependency declaration would resolve into a silent second copy. */
+const CONFLICTING_EFFECT = '3.19.0';
+
 /**
  * Runs a UUID service the consumer never installed `effect` for, through an Effect the consumer
  * built with the `effect` its own install produced. A `Context.Service` key minted inside the
@@ -297,6 +301,74 @@ describe('a consumer naming ONE package needs no overrides for a closure beneath
   it('still reaches the code that sibling contributes, because the bundle carries it', () => {
     const used = run(['bun', 'use.ts'], soloDir);
     expect(used.output).toContain('suite box 42');
+  });
+});
+
+/**
+ * The reason `effect` and `svelte` are PEERS rather than dependencies.
+ *
+ * Measured on bun 1.3.14, with a consumer pinned to Effect v3 while these packages require v4:
+ *
+ * - as a `dependency`, bun installs a SECOND, nested `effect@4.x` under the package. Exit 0, no
+ *   warning. The consumer's v3 test code then meets a v4 harness, and v3 and v4 do not
+ *   interoperate — they identify their values by different schemes entirely.
+ * - as a `peerDependency`, bun warns and installs NO second copy.
+ *
+ * bun does not fail the install either way, so the guarantee proved here is the one that matters:
+ * a version conflict never silently becomes two copies.
+ */
+describe('a consumer whose own effect conflicts gets a warning, never a second copy', () => {
+  const conflictDir = ((): string => {
+    const dir = join(fixtures.path(), 'consumer-effect-v3');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'package.json'),
+      `${JSON.stringify(
+        {
+          name: 'consumer-effect-v3',
+          version: '0.0.0',
+          private: true,
+          type: 'module',
+          dependencies: {
+            '@packages/effect-bun-test': `file:${tarballs.get('@packages/effect-bun-test') ?? ''}`,
+            effect: CONFLICTING_EFFECT,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    return dir;
+  })();
+
+  let installed: Run | undefined;
+
+  it(
+    'surfaces the conflict at install time rather than passing it over in silence',
+    () => {
+      installed = run(INSTALL, conflictDir);
+      expect(installed.output.toLowerCase()).toContain('peer');
+    },
+    INSTALL_TIMEOUT_MS,
+  );
+
+  it('installs the consumer their OWN effect, unreplaced', () => {
+    const version = JSON.parse(
+      readFileSync(join(conflictDir, 'node_modules', 'effect', 'package.json'), 'utf8'),
+    ) as { readonly version: string };
+    expect(version.version).toBe(CONFLICTING_EFFECT);
+  });
+
+  it('nests no second copy of effect under the package, which is the whole guarantee', () => {
+    const nested = join(
+      conflictDir,
+      'node_modules',
+      '@packages',
+      'effect-bun-test',
+      'node_modules',
+      'effect',
+    );
+    expect({ nested, present: existsSync(nested) }).toEqual({ nested, present: false });
   });
 });
 

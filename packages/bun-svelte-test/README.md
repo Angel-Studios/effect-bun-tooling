@@ -282,13 +282,16 @@ serial, 0 pass / 55 fail with `--parallel` wired.
 
 ## Version coupling
 
-- **svelte** is an ordinary `dependency` (`^5.56.8`), not a peer — a consumer declares nothing.
-  It is never bundled: components compile with whichever svelte resolves in the consumer's tree,
-  and compiler output imports `svelte/internal/client` at runtime, so a vendored copy would be
-  the wrong one. The `^` range lets a consumer's own svelte dedupe onto one copy; a bump
-  re-verifies this package's fixture suite. The browser substitution is derived from the installed
-  version's `exports` map, so it survives most bumps — and hard-fails loudly rather than silently
-  if it ever does not.
+- **svelte** is a **peer** dependency (`^5.56.8`), and the one this package can least afford to
+  duplicate: components compile with whichever svelte resolves in the consumer's tree, and
+  compiler output binds `svelte/internal/client` at runtime, so compiling against one copy while
+  mounting on another fails in exactly the silent way step 4 of the preload exists to prevent.
+  Measured on bun 1.3.14: as an ordinary dependency, a consumer on `svelte@4.2.19` silently
+  receives a nested `svelte@5.56.9`; as a peer they get a warning and no second copy. A consumer
+  still declares nothing, because bun auto-installs a missing peer. The `^` range lets their own
+  svelte dedupe onto one copy; a bump re-verifies this package's fixture suite. The browser
+  substitution is derived from the installed version's `exports` map, so it survives most bumps —
+  and hard-fails loudly rather than silently if it ever does not.
 - **`@testing-library/svelte`** is declared NOWHERE, by design. The loader probes for it at
   preload time with `Bun.resolveSync` and a dynamic `import`, so it is a pure runtime opt-in
   rather than an optional peer a consumer has to know to decline. Absent: the loader works, no

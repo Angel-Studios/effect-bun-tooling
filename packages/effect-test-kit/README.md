@@ -38,7 +38,8 @@ Effect `Config` failures. Every `ConfigError` carries the `_tag` `'ConfigError'`
 discriminates nothing. Under Effect v4 a `ConfigError` wraps a `SchemaError` rather than carrying
 v3's `_op`, so assert the rendered message.
 
-`effect` is an ordinary `dependency`, not a peer: a consumer declares nothing, and the package
-manager dedupes it onto the copy they already have. It is never bundled — the signatures here are
-written in Effect's own `Exit`, `Cause`, `Option` and `Result` types, which have to be the same
-types the consumer's `effect` provides.
+`effect` is a **peer** dependency, declared at the open range `>=4.0.0-rc.109 <5`. A consumer
+declares nothing — bun auto-installs a missing peer — while a consumer whose own copy conflicts
+gets a warning instead of a silently nested second one. It is never bundled either: the signatures
+here are written in Effect's own `Exit`, `Cause`, `Option` and `Result` types, which have to be
+the same types the consumer's `effect` provides.

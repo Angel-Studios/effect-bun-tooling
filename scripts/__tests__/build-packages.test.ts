@@ -46,6 +46,36 @@ describe('externalsOf', () => {
   it('leaves a package with no dependencies with nothing to externalise, so everything reached is bundled', () => {
     expect(externalsOf({ dir: '', manifestPath: '', manifest: { name: 'x', version: '0.0.0' } })).toEqual([]);
   });
+
+  it('externalises a PEER, which is the one it can least afford to inline', () => {
+    // Regression: while `externalsOf` read only `dependencies`, moving `effect` and `svelte` to
+    // `peerDependencies` bundled both into the dist — a vendored singleton, exactly what the peer
+    // declaration exists to prevent, and the build reported success.
+    expect(
+      externalsOf({
+        dir: '',
+        manifestPath: '',
+        manifest: {
+          name: 'x',
+          version: '0.0.0',
+          peerDependencies: { effect: '>=4.0.0-rc.109 <5', svelte: '^5.56.8' },
+        },
+      }),
+    ).toEqual(['effect', 'effect/*', 'svelte', 'svelte/*']);
+  });
+
+  it('externalises every real peer this repo ships, so none of them can be inlined', () => {
+    for (const pkg of publishablePackages()) {
+      const externals = externalsOf(pkg);
+      for (const peer of Object.keys(pkg.manifest.peerDependencies ?? {})) {
+        expect({ pkg: pkg.manifest.name, peer, external: externals.includes(peer) }).toEqual({
+          pkg: pkg.manifest.name,
+          peer,
+          external: true,
+        });
+      }
+    }
+  });
 });
 
 describe('sourceOfDistTarget', () => {

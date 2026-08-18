@@ -32,8 +32,10 @@ Ships built JavaScript with declarations beside it: `exports` points at `./dist/
 `node16`, or `nodenext`). Pair `moduleResolution: "bundler"` with `module: "preserve"`;
 `module: "bundler"` is not a valid `tsc` value.
 
-**Nothing to declare.** `effect` is an ordinary `dependency`, installed for the consumer rather
-than demanded from them. There are no peer dependencies.
+**Nothing to declare.** `effect` is a **peer** dependency at the open range `>=4.0.0-rc.109 <5`,
+and bun auto-installs a missing peer, so a consumer names it nowhere. The peer declaration is what
+keeps `Uuid` a single service key: were `effect` an ordinary dependency, a consumer whose own copy
+fell outside that range would silently receive a second one nested under this package.
 
 Shipping `.d.ts` rather than `.ts` is what retires this package's old `@types/node` contract.
 `src/layer.live.ts` still imports `node:crypto`, but that import now lives in the emitted

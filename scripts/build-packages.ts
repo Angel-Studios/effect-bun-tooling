@@ -44,12 +44,18 @@ import {
 export const BUNDLED_TYPES_DIR = '_bundled';
 
 /**
- * Everything a consumer installs stays external. `bun build` matches an external by exact
- * specifier, so a package reached by subpath (`effect/Layer`, `svelte/compiler`) needs the
- * wildcard form alongside the bare name.
+ * Everything a consumer installs stays external, and a PEER most of all: the entire reason
+ * `effect` and `svelte` are peers is that exactly one copy may exist in a consumer's tree, and
+ * bundling a second one in here would defeat that outright and silently. `bun build` matches an
+ * external by exact specifier, so a package reached by subpath (`effect/Layer`,
+ * `svelte/compiler`) needs the wildcard form alongside the bare name.
  */
 export const externalsOf = (pkg: WorkspacePackage): readonly string[] =>
-  [...Object.keys(pkg.manifest.dependencies ?? {}), ...Object.keys(pkg.manifest.optionalDependencies ?? {})]
+  [
+    ...Object.keys(pkg.manifest.dependencies ?? {}),
+    ...Object.keys(pkg.manifest.peerDependencies ?? {}),
+    ...Object.keys(pkg.manifest.optionalDependencies ?? {}),
+  ]
     .sort()
     .flatMap((name) => [name, `${name}/*`]);
 
@@ -177,7 +183,22 @@ export const buildOne = (pkg: WorkspacePackage, siblings: readonly WorkspacePack
     }
   }
 
-  for (const imported of bareImportsOf(distModuleFiles(pkg))) {
+  // A peer that stopped being imported was INLINED, not dropped: `bun build` bundles anything it
+  // is not told to keep external, and a silently vendored second copy of `effect` or `svelte` is
+  // the exact failure the peer declaration exists to prevent. Measured once for real, when
+  // `externalsOf` did not yet read `peerDependencies`.
+  const distImports = bareImportsOf(distModuleFiles(pkg));
+  for (const peer of Object.keys(pkg.manifest.peerDependencies ?? {})) {
+    if (!distImports.has(peer)) {
+      throw new Error(
+        `${pkg.manifest.name} declares ${peer} as a peer dependency, but its dist imports it ` +
+          'nowhere — the bundler inlined a copy instead of leaving it external, which is what the ' +
+          'peer declaration exists to prevent',
+      );
+    }
+  }
+
+  for (const imported of distImports) {
     if (imported.startsWith(WORKSPACE_SCOPE)) {
       throw new Error(
         `${pkg.manifest.name}'s dist still imports ${imported}, a ${WORKSPACE_SCOPE} name that resolves ` +

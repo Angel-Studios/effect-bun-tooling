@@ -16,46 +16,54 @@
     },
     "packages/bun-svelte-test": {
       "name": "@packages/bun-svelte-test",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "dependencies": {
         "@happy-dom/global-registrator": "20.9.0",
         "@types/bun": "^1.3.14",
-        "effect": ">=4.0.0-rc.109 <5",
         "happy-dom": "20.9.0",
-        "svelte": "^5.56.8",
       },
       "devDependencies": {
         "@packages/effect-bun-test": "workspace:*",
         "@testing-library/svelte": "5.3.1",
+        "effect": "catalog:",
+        "svelte": "5.56.8",
         "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "effect": ">=4.0.0-rc.109 <5",
+        "svelte": "^5.56.8",
       },
     },
     "packages/effect-bun-test": {
       "name": "@packages/effect-bun-test",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "dependencies": {
         "@types/bun": "^1.3.14",
-        "effect": ">=4.0.0-rc.109 <5",
       },
       "devDependencies": {
         "@packages/fixture-residue": "workspace:*",
+        "effect": "catalog:",
         "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "effect": ">=4.0.0-rc.109 <5",
       },
     },
     "packages/effect-test-kit": {
       "name": "@packages/effect-test-kit",
-      "version": "0.2.1",
-      "dependencies": {
-        "effect": ">=4.0.0-rc.109 <5",
-      },
+      "version": "0.3.0",
       "devDependencies": {
         "@types/bun": "catalog:",
+        "effect": "catalog:",
         "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "effect": ">=4.0.0-rc.109 <5",
       },
     },
     "packages/fixture-residue": {
       "name": "@packages/fixture-residue",
-      "version": "0.2.1",
+      "version": "0.3.0",
       "devDependencies": {
         "@types/bun": "catalog:",
         "typescript": "catalog:",
@@ -63,13 +71,14 @@
     },
     "packages/uuid-effect": {
       "name": "@packages/uuid-effect",
-      "version": "0.2.1",
-      "dependencies": {
-        "effect": ">=4.0.0-rc.109 <5",
-      },
+      "version": "0.3.0",
       "devDependencies": {
         "@types/bun": "catalog:",
+        "effect": "catalog:",
         "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "effect": ">=4.0.0-rc.109 <5",
       },
     },
   },
