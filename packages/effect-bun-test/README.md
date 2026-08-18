@@ -356,6 +356,7 @@ structural changes, as opposed to the mechanical renames:
 | `Schedule.recurs(n) ∘ elapsed ∘ whileOutput(≤ t)` | `Schedule.recurs(n)` + `Schedule.upTo({ duration: t })` | `Schedule` lost `compose`, `elapsed` and `whileOutput`; `upTo` expresses the same bound directly. |
 | `Arbitrary.make(schema)` | `Schema.toArbitrary(schema)(fc)` | The standalone `Arbitrary` module is gone; derivation now returns a factory over the FastCheck namespace. |
 | `Logger.replace(defaultLogger, l)` | swap over `References.CurrentLoggers` | `Logger.layer([l])` would install *only* `l`, silently dropping the ambient `tracerLogger`; `log-capture` does the one-for-one swap explicitly to preserve v3 behaviour. |
+| `logLevel.label` (`'WARN'`, `'OFF'`) | `logLevelLabel(logLevel)` | v4 models a level as a bare string union member (`'Warn'`, `'None'`) rather than an object carrying a `label`. Every level differs in case and the off sentinel differs in spelling, so a caller that kept `level === 'WARN'` would not fail — it would match nothing and quietly assert nothing. `CapturedLog.level` therefore stays on the v3 labels, and `logLevelLabel` is exported so a caller building its own `Logger.make` sink can label a raw v4 level the same way. |
 
 ### Additions (no upstream counterpart)
 
