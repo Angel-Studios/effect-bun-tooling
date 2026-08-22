@@ -1,0 +1,139 @@
+apiVersion = 1
+
+dodGates = []
+lintFragments = []
+skillsRouting = []
+grammars = []
+
+[[hookSet]]
+id = "pre-git-destructive"
+event = "PreToolUse"
+enforces = """\
+REFUSES `git commit --no-verify` and a bare `git push --force` inside the agent's Bash tool, at \
+exit 2; the ban is otherwise a social rule with nothing behind it. It sources _lib-tokenize.sh for \
+the quote-aware argv walk, so `git "commit"` cannot evade it, and without that library it exits 1 \
+rather than refusing silently. MEASURED LIMIT, stated because a declaration is not a refusal: \
+`git reset --hard` only WARNS and exits 0, so a destructive reset is NOT guarded by this hook. It \
+also does not resolve user aliases such as `git ci`, which would mean reading .gitconfig."""
+
+[[hookSet]]
+id = "pre-commit-dod"
+event = "PreToolUse"
+enforces = """\
+runs `bun run dod` at the moment `git commit` is typed and REFUSES the commit before git sees it. \
+The command match splits the line on &&, ||, ; and subshell punctuation BEFORE tokenizing, so \
+`bun run build && git commit -m x` gates — a walk over the whole line's tokens would find `bun` in \
+first position and return early. Registered a second time at Stop with --warn-if-uncommitted, \
+where it blocks nothing and only names what is uncommitted. Unlike the ultravisor plane repo this \
+is NOT the only gate surface: .github/workflows/ci.yml triggers on pull_request and re-runs the \
+same set, so skipping this layer defers the gate rather than removing it."""
+
+[[hookSet]]
+id = "pre-edit-claude-md-lint"
+event = "PreToolUse"
+enforces = """\
+names the add-claude-md discipline before a CLAUDE.md edit lands and runs the scoped lint when one \
+is present. ADVISORY BY CONSTRUCTION: it exits 0 whatever it finds. The blocking surface for the \
+same property is the `lint-claude-md` gate, which additionally refuses an EMPTY scan set with exit \
+3 rather than reporting a pass."""
+
+[[hookSet]]
+id = "post-edit-biome"
+event = "PostToolUse"
+enforces = """\
+biome's auto-fixable findings are repaired at authorship rather than discovered at the commit \
+gate, scoped to the one file just written"""
+
+[[hookSet]]
+id = "post-edit-ast-grep"
+event = "PostToolUse"
+enforces = """\
+an ast-grep violation is surfaced to its AUTHOR while the context to fix it still exists. It runs \
+from the git top level because sgconfig.yml resolves every ruleDir relative to itself, and a scan \
+launched from a nested cwd finds no config and applies ZERO rules — a silent no-op that looks \
+exactly like a clean file. Advisory: `lint-ast` counts whole-repo findings, so a per-file blocking \
+gate here would fire on inherited debt in any file an author happens to touch."""
+
+[[hookSet]]
+id = "session-start-hypervisor-reanchor"
+event = "SessionStart"
+enforces = """\
+re-anchors a Hypervisor whose window was compacted or resumed. DEGRADED IN THIS REPO AND SAID SO \
+PLAINLY: the helper it calls returns 127 when .claude/plan-coordination/db.ts is absent, and this \
+repo deliberately carries no LMDB store, so the hook installs, registers, probes as fired and \
+re-hydrates NOTHING. It is here so the wiring exists the day a store does, not because continuity \
+is currently protected."""
+
+[[hookSet]]
+id = "pre-compact-hypervisor-checkpoint"
+event = "PreCompact"
+enforces = """\
+records a compaction boundary as an append-only audit row and refuses a manual compaction with no \
+fresh checkpoint. Carries the SAME degradation as the reanchor hook above: with no db.ts present \
+the store call returns 127 and the hook exits 0 having recorded nothing."""
+
+[[hookSet]]
+id = "instructions-loaded-log"
+event = "InstructionsLoaded"
+enforces = """\
+records which instruction files auto-loaded, per project, so "why did that rule not fire" is \
+answerable after the fact. Pure observability: exits 0 always and blocks nothing."""
+
+[[provisioningSteps]]
+id = "install-deps-frozen"
+run = "bun install --frozen-lockfile"
+description = """\
+install from the committed bun.lock without letting resolution drift. --frozen-lockfile is \
+load-bearing rather than tidy: bun.lock is the ONLY committed lockfile, so an unfrozen install on \
+a machine with a different registry view resolves a tree no file records."""
+
+[[provisioningSteps]]
+id = "verify-jq-for-claude-hooks"
+run = "command -v jq >/dev/null 2>&1"
+description = """\
+assert jq is on PATH. Every .claude/hooks/ entry parses its stdin JSON with it, and each opens by \
+exiting early when jq is absent — so on a node without jq the whole hook set installs, passes \
+`test -x`, passes `bash -n`, registers in settings.json and probes as HookFired while gating \
+NOTHING, the DoD enforcer and the destructive-git refusal included. The blocking hooks say so on \
+stderr; the advisory ones stay silent, which is the point of asserting it here instead."""
+
+[[provisioningSteps]]
+id = "build-publishable-packages"
+run = "bun run build"
+description = """\
+emit each package's dist/ before anything reads a built entry point. The exports maps point at \
+dist, so a consumer-shaped import resolves to nothing until this has run."""
+
+[[injectionRules]]
+skillRef = "verification-before-completion"
+mode = "full"
+when = { _tag = "WriteScopeGlob", glob = "**" }
+
+[[injectionRules]]
+skillRef = "effect-expertise"
+mode = "pointer"
+when = { _tag = "StackPack", stackPack = "ts-effect" }
+
+[[injectionRules]]
+skillRef = "test-author"
+mode = "pointer"
+when = { _tag = "WriteScopeGlob", glob = "packages/**" }
+
+[[commandExtensions]]
+id = "lint-effect-diagnostics"
+run = "bun run lint:effect"
+runAt = "gate"
+enforces = """\
+the Effect language-service diagnostics across every package. This is a DISTINCT failure class \
+from `typecheck`: an unpatched or unconfigured language service leaves tsc green while running \
+zero Effect rules, so a green typecheck is not evidence that any Effect diagnostic ran."""
+
+[[commandExtensions]]
+id = "consumer-tarball-roundtrip"
+run = "bun run test:e2e"
+runAt = "survey"
+enforces = """\
+proves a consumer can install the PACKED tarballs with nothing else declared. It is the only check \
+that exercises what npm actually receives: every other gate reads the working tree, where a \
+missing `files` entry or a wrong exports path is invisible. Scoped to `survey` rather than `gate` \
+because it builds, packs and installs real archives."""

@@ -75,6 +75,11 @@ const makeContext = (): TestContextInternal => {
 // test's own outcome. `ignoreCause` discards failures, defects and interrupts
 // alike, which is what the original `try { await cb() } catch {}` did.
 const runCallback = (cb: TestCallback): Effect.Effect<void> =>
+  // `Promise.resolve` here normalizes a `void | Promise<void>` union into a thenable so
+  // `Effect.promise` can consume it. It is the bridge the rule asks for, not raw async
+  // control flow: the surrounding `Effect.promise` already owns the error channel, and a
+  // sync throw from `cb()` lands as a defect either way, which `ignoreCause` then discards.
+  // ast-grep-ignore: no-raw-promise
   Effect.suspend(() => Effect.promise(() => Promise.resolve(cb()))).pipe(Effect.ignoreCause);
 
 const flush = (ctx: TestContextInternal, failed: boolean): Effect.Effect<void> =>

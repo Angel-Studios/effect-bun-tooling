@@ -1,0 +1,195 @@
+id: no-console-in-effect-context
+language: TypeScript
+severity: warning
+message: "`console.*` here sits directly inside an Effect context (an `Effect.gen`/`Effect.fn` generator body, or an `Effect.sync`/`suspend`/`try`/`tryPromise`/`promise`/`async` — v4 `callback` — thunk). In an Effect context, log through Effect's injectable logging idiom instead of the ambient `console`: `yield* Effect.logInfo(...)` (or `Effect.logDebug`/`Effect.logWarning`/`Effect.logError`) routes through the structured `Logger` — filterable by `LogLevel`, span-annotated, redirectable in tests — and `yield* Console.log(...)` (the `Console` service from `effect`) is the injectable equivalent when you deliberately want raw stdout (as CLI commands here do). Both replace ambient `console.*` the same way `Clock` replaces `Date.now()`. This is an ADVISORY source-level complement to the ENFORCED `globalConsoleInEffect` Effect-LSP rule, which is the HARD `tsc` gate on this same axis. Browser code is NOT path-exempt: if you are inside an Effect context in the frontend, `Effect.log*`/`Console` is still the injectable idiom (a bare `console.log` OUTSIDE any Effect context in browser UI code is untouched — that is the rejected `globalConsole`'s turf, not this rule's)."
+note: |
+  WHAT FIRES — and, honestly, its NARROW and IRREGULAR firing domain.
+  This rule fires on a `console.$METHOD(...)` call (any member: log/error/warn/debug/
+  info/table/dir/…) for which BOTH hold:
+    (1) SOME ancestor is a call to an Effect combinator whose callback body is an
+        Effect context — `Effect.gen(function*(){ … })`, `Effect.fn(function*(){ … })`,
+        `Effect.fnUntraced(...)`, or an `Effect.sync|suspend|try|tryPromise|promise|async`
+        thunk (`async` is the v3 spelling; its v4 successor `Effect.callback` is anchored
+        alongside it — see the BILINGUAL comment on the rule body); AND
+    (2) there is NO non-thunk `arrow_function` / `function_expression` /
+        `function_declaration` ANYWHERE on the ancestor chain between the call and the
+        root (clause (2) is an EXISTENCE check over ALL ancestor functions, not a
+        "nearest enclosing function" check — see the asymmetry in gap (g)).
+  The honest fix where it DOES fire is Effect's injectable logging: `yield* Effect.logInfo`
+  (structured `Logger`, `LogLevel`-filtered, span-annotated) or `yield* Console.log` (the
+  `Console` service, for deliberate raw stdout) — injectable the same way `Clock` replaces
+  `Date.now()`.
+
+  Because of (2), the guard's realistic firing surface is SMALL and SHAPE-DEPENDENT: it
+  fires only on Effects defined at TOP LEVEL (`const x = Effect.gen(function*(){ console.log() })`)
+  or wrapped in a CLASS/OBJECT METHOD (`method_definition`, which is not a matched function
+  kind). It is SILENT when the Effect is produced by a FACTORY arrow or function
+  (`const make = () => Effect.gen(…)`, `function make(){ return Effect.sync(…) }`) — the
+  dominant way real services are written — because that factory arrow/function is a
+  non-thunk ancestor and clause (2) suppresses the match. So this is a NARROW, IRREGULAR
+  advisory tripwire, NOT a "catch every console.* directly inside an Effect" gate. That
+  is acceptable BY DESIGN: the direction is SAFE (see below) and the HARD enforcement lives
+  in `globalConsoleInEffect`, not here.
+
+  DIRECTION IS SAFE (false negatives only, never a false positive). Clause (1) requires an
+  Effect-thunk ancestor, so a `console.*` truly OUTSIDE any Effect context (the rejected
+  `globalConsole`'s ~333 sites: build/dev `scripts/` with no Effect runtime, browser UI
+  logging, plain non-Effect helpers) can NEVER match — verified 0 real in-tree calls fire.
+  The factory-wrap silence in gap (g) is a MISS, never a spurious fire. There is no
+  gate-break even were this flipped to `error` (it is `warning`; see the last paragraph).
+
+  RELATION TO `globalConsoleInEffect` (Effect-LSP, enforced at `error`, burned to 0):
+  OVERLAPPING, not disjoint — this guard's matched shape is a strict SUBSET of what that LSP
+  rule enforces (that rule resolves Effect context semantically, so it ALSO catches the
+  factory-wrapped forms this guard misses). That is DELIBERATE and precedented: the
+  ambient-crypto guard (#1754) likewise overlaps the surviving `cryptoRandomUUIDInEffect`,
+  and the `no-math-random-in-effect-context` guard overlaps `globalRandomInEffect`.
+  `globalConsoleInEffect` remains the HARD gate (it reds `tsc`); THIS guard is a source-level,
+  `.svelte`-aware ADVISORY echo of the same axis. Its HONEST marginal value is narrow:
+  DEFENSE-IN-DEPTH that survives on the separate `pnpm lint:ast` gate even if the Effect-LSP
+  `tsc` patch is ever lost, plus a source-level presence in `.svelte` `<script>` regions via the
+  sgconfig injection. It does NOT (this is a deliberately un-asserted, undemonstrated claim)
+  close a proven `.svelte` hole in `globalConsoleInEffect`-via-`check:svelte`, which ALREADY
+  scans `.svelte`; treat it as belt-and-braces, not as recovering a coverage gap. It is
+  `warning` precisely because the hard enforcement already lives in `globalConsoleInEffect` —
+  a redundant hard gate would only add fragility.
+
+  RELATION TO THE REJECTED `globalConsole`: this guard fires on NONE of the ~333 outside-Effect
+  sites `globalConsole` flagged (staged-counts 306 + svelte-counts 27). That is not a gap —
+  ~93%/80% of those are `console.*` in build/dev `scripts/` where NO Effect runtime is
+  bootstrapped (wrapping each script in `Effect.runSync` only to satisfy a lint is
+  disproportionate), the rest are browser packages plus a small genuine Effect-service slice
+  that is ALREADY hard-enforced by `globalConsoleInEffect@error`. Every one is outside an Effect
+  context, which is exactly WHY `globalConsole` was rejected. This guard targets the disjoint
+  inside-Effect shape, a population already burned to 0.
+
+  WHY NO PATH EXEMPTION (browser and scripts are NOT ignored by glob): unlike ambient
+  `crypto.randomUUID()` (correct Web Crypto in the browser, wrong in Node → #1754 needed
+  browser globs), `console.*` INSIDE an Effect context has no browser/Node split —
+  `Effect.log*`/`Console` is the injectable idiom in browser Effect code too, and no Effect
+  runtime lives in a plain build script to begin with. The scripts/browser false-positive wall
+  (the entire ~333-site rejected `globalConsole` population) is excluded by MATCHER PRECISION
+  (clause (1) requires an Effect-thunk ancestor), NOT by glob (measured: 0 real sites fire,
+  incl. 0 scripts, 0 browser). Adding path globs would create a forward hole (a genuine
+  browser-Effect or Effect-in-a-tool-script `console.log` silently missed) and a rotting
+  hand-list, for no benefit.
+
+  BOUNDED GAPS — treat any form NOT here and NOT matched as an unreviewed hole:
+    a. NON-`console.method(...)` RECEIVER SHAPES never match — the `console.$METHOD($$$ARGS)`
+       pattern anchors on a literal `console` identifier receiver with a member call. Silent,
+       by construction: an ALIASED console (`const c = console; c.log()`, or destructured
+       `const { log } = console; log()`), a COMPUTED member (`console["log"]()`), a
+       `globalThis.console.log()` (the receiver is a member expression, not the bare `console`
+       identifier), and a METHOD REFERENCE passed WITHOUT calling (`[1].forEach(console.log)` —
+       not a `call_expression` on `console`). ast-grep is syntactic and cannot follow a binding
+       to the global `console`. All four are strictly more work than the plain call and read as
+       deliberate evasion; each is a SAFE-DIRECTION miss.
+    b. `.tsx`/`.jsx`: `language: TypeScript` covers `.ts`/`.mts`/`.cts` and, via the sgconfig
+       injections, `.svelte` `<script>`/expression regions; ast-grep parses Tsx as a SEPARATE
+       language. Currently EMPTY: grep-verified 0 `.tsx` files with `console.*` AND `Effect.*`
+       in-tree (13 `.tsx` files total). Same bounded-empty gap as #1754's / globalRandom's `.tsx`
+       note.
+    c. The CURRIED `Effect.fn('name')(function*(){ … })` form is NOT matched (the outer call's
+       callee is `Effect.fn('name')`, which the `^Effect\.fn$` anchor does not match; the inner
+       `Effect.fn('name')` call does not contain the generator body). Non-curried
+       `Effect.fn(function*(){ … })` and `Effect.fnUntraced(...)` ARE matched. SAFE-DIRECTION miss;
+       `globalConsoleInEffect` covers it.
+    d. HOIST-TO-HELPER laundering: pulling `console.log()` into a plain sync helper CALLED FROM an
+       Effect (dodging `globalConsoleInEffect`). ast-grep has no cross-function dataflow, so this is
+       outside ANY syntactic guard's reach — the same class of gap #1754 accepted. Mitigated: the
+       hoisted helper genuinely IS outside Effect (where a bare `console.log` is the rejected
+       `globalConsole`'s untouched turf anyway).
+    e. An intervening NON-thunk callback between the console call and the thunk makes an otherwise
+       inside-`Effect.sync` site SILENT — `Effect.forEach(xs, () => Effect.sync(() => console.log()))`
+       (outer `forEach` arrow) or `Effect.sync(() => xs.map((n) => console.log(n)))` (inner `.map`
+       arrow) — because that intervening arrow is a non-thunk ancestor → clause (2) suppresses.
+       SAFE-DIRECTION miss; `globalConsoleInEffect` catches it.
+    f. NON-console receivers `logger.log()` / `this.log()` / `ctx.console.log()` NEVER match — the
+       pattern anchors on the `console` identifier receiver by construction (this is the intended
+       precision that lets an injected `Logger`/`Console`-service call pass silently).
+    g. FACTORY-WRAP silence + the arrow-vs-method ASYMMETRY (the largest and least-obvious gap,
+       consequence of clause (2) being an existence check). A `console.*` DIRECTLY in an Effect
+       thunk is SILENT when any factory `arrow_function`/`function_expression`/`function_declaration`
+       encloses that thunk (`const make = () => Effect.gen(function*(){ console.log() })`,
+       `function make(){ return Effect.sync(() => console.log()) }`), yet FIRES when the same Effect
+       is a top-level binding or a CLASS/OBJECT METHOD (`method_definition` is not a matched function
+       kind: `class S { run(){ return Effect.gen(function*(){ console.log() }) } }` fires). This
+       asymmetry is arbitrary and accepted: widening clause (2) to close it would re-introduce the
+       false positive on the legit `Effect.sync(() => console.log())` shape (whose `console.log` is
+       itself inside an arrow), which the double-negation exists to prevent, and would buy 0 today.
+       `globalConsoleInEffect` is the semantic gate that catches the factory-wrapped forms.
+
+  There is NO harden-to-error burn-down here: the HARD gate is `globalConsoleInEffect`. This guard
+  is advisory (`warning`) by design. To make it a hard source-level tripwire, flip `severity: error`
+  (safe today at 0 findings) — no browser/scripts `ignores:` globs are needed or wanted (unlike the
+  ambient-crypto guard), because the inside-Effect shape has no browser/Node split; the scripts and
+  browser walls are matcher-excluded, not path-excluded.
+
+  See `the plan-DB roadmap/effect-lsp record` (Rejected rules → globalConsole) and the plan store
+  `roadmap/effect-lsp` key `arch-globalconsole-design`. Hostile-input proof:
+  `.ast-grep/tests/no-console-in-effect-context-test.yml` (native, rule LOGIC) and
+  `.ast-grep/tests/no-console-in-effect-context.injection.test.ts` (bun; proves the `.svelte`
+  injection is non-vacuous, the outside-Effect/scripts wall is silent by construction, and the
+  matcher excludes helper-arrows / factory-wraps / callbacks / non-console receivers).
+rule:
+  pattern: console.$METHOD($$$ARGS)
+  all:
+    # (1) SOME ancestor is a call to an Effect combinator whose callback body is an
+    #     Effect context. Thunk-body-is-Effect set only (gen/fn/fnUntraced/sync/
+    #     suspend/try/tryPromise/promise/async/callback). Deliberately EXCLUDES
+    #     map/flatMap/forEach/tap — their callback bodies are pure projections, NOT
+    #     Effect contexts, so a bare console.* there is outside-Effect (rejected
+    #     globalConsole's turf).
+    #     BILINGUAL: `async` is the v3 spelling and `callback` its v4 successor
+    #     (effect@4.0.0-rc.108 `dist/Effect.d.ts` declares `callback` at :1463 and
+    #     has ZERO `declare const async`). Both are listed, not swapped, so this
+    #     anchor keeps matching on a half-migrated tree. Do NOT copy this pair into
+    #     `no-timers-in-effect-context`: that rule excludes BOTH deliberately (an
+    #     `Effect.callback`/`Effect.async` register fn is exactly where a raw timer
+    #     is the correct primitive) — see its note, clause (1).
+    #     V4 ADDITION, not a rename: `fn[A-Za-z]*` is a WILDCARD, not an enumeration.
+    #     effect v4 adds `Effect.fnUntracedEager` (`dist/Effect.d.ts` @since 4.0.0), a
+    #     generator-taking constructor with the same body shape as `fnUntraced`. The
+    #     complete v4 generator-taking set is gen | fn | fnUntraced | fnUntracedEager.
+    #     An ENUMERATION covered three of four and went BLIND inside the fourth — probe:
+    #     an identical body under `fnUntraced` matched and under `fnUntracedEager` matched
+    #     ZERO. That is a permanent silent zero, not a falling count: this rule is
+    #     unrecorded in the ratchet baseline, so a blinded arm reads as a clean tree and
+    #     `ratchet` never prints TIGHTENED. The prior v4 pass fixed the async -> callback
+    #     RENAME and never enumerated v4 ADDITIONS, which is how this survived. The
+    #     wildcard closes the next fn* variant in advance; do NOT collapse it back to a list.
+    - inside:
+        kind: call_expression
+        stopBy: end
+        has:
+          field: function
+          regex: '^Effect\.(gen|fn[A-Za-z]*|sync|suspend|try|tryPromise|promise|async|callback)$'
+    # (2) EXISTENCE check: suppress if ANY ancestor arrow/function-expression/
+    #     function-declaration is a PLAIN helper — i.e. is NOT itself the thunk
+    #     `arguments` of an Effect combinator call. This makes helper arrows inside a
+    #     gen body, nested map/callback closures, AND factory-arrow/function wraps
+    #     (gap g) SILENT, while `Effect.sync(() => console.log())` (the arrow IS the
+    #     thunk) at top level FIRES. The double-negation is load-bearing; do not
+    #     simplify without re-running the hostile fixtures (a bare
+    #     `not: {inside: {any:[arrow,...]}}` would wrongly silence the legit
+    #     direct-in-thunk case).
+    - not:
+        inside:
+          stopBy: end
+          any:
+            - kind: arrow_function
+            - kind: function_expression
+            - kind: function_declaration
+          not:
+            inside:
+              kind: arguments
+              inside:
+                kind: call_expression
+                has:
+                  field: function
+                  regex: '^Effect\.(gen|fn[A-Za-z]*|sync|suspend|try|tryPromise|promise|async|callback)$'
+# ignores: (INTENTIONALLY ABSENT — see note "WHY NO PATH EXEMPTION")
+
+metadata:
+  enforces: "console.* inside an Effect context uses the Effect logging service (Effect.log / a Console service), never the ambient console"
+  origin: "effect-lsp ratchet (retired 2026-07-21, plan-DB roadmap/effect-lsp); globalConsole reject-and-replace"

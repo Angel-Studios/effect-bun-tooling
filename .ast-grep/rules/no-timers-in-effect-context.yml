@@ -1,0 +1,236 @@
+id: no-timers-in-effect-context
+language: TypeScript
+severity: warning
+message: "An ambient timer call (`setTimeout`/`setInterval`/`clearTimeout`/`clearInterval`/`setImmediate`) here sits directly inside an Effect context (an `Effect.gen`/`Effect.fn` generator body, or an `Effect.sync`/`suspend`/`try`/`tryPromise`/`promise` thunk — the `Effect.async` REGISTER callback is deliberately EXCLUDED, matching the enforced `globalTimersInEffect`, because a timer there is the sanctioned bare-timer FFI seam, not a smell). In an Effect context, schedule through Effect's injectable time idiom instead of the ambient timer globals: a one-shot delay is `yield* Effect.sleep(Duration)` (or `Effect.delay` on the delayed effect), a recurring tick is `Effect.repeat`/`Schedule.spaced` on a forked fiber, and you CANCEL by INTERRUPTING that fiber (`Fiber.interrupt`, or letting its `Scope` close) rather than holding a handle for `clearTimeout`/`clearInterval`. All of these route through the injectable `Clock` service — so a test drives them under `TestClock` with virtual time, exactly as `Clock` replaces `Date.now()`. This is an ADVISORY source-level complement to the ENFORCED `globalTimersInEffect` Effect-LSP rule, which is the HARD `tsc` gate on this same axis. Browser code is NOT path-exempt: if you are inside an Effect context in the frontend, `Effect.sleep`/`Schedule`/`Fiber.interrupt` is still the injectable idiom. A bare ambient timer OUTSIDE any Effect context — a raw-SSE keepalive/heartbeat on a `Response` stream, a subprocess/socket kill-timeout, an injected timer seam, an embedded browser-script template, a `sleep(ms)` helper in a build/bench script, or browser UI — is untouched: that is the rejected `globalTimers`'s turf, not this rule's."
+note: |
+  WHAT FIRES — and, honestly, its NARROW and IRREGULAR firing domain.
+  This rule fires on an ambient timer call — a `call_expression` whose callee is the
+  bare identifier `setTimeout`, `setInterval`, `clearTimeout`, `clearInterval`, or
+  `setImmediate` (NOT a member call like `clock.setTimeout` / `window.setInterval` /
+  `this.timer` — those anchor on a member_expression callee and never match) — for
+  which BOTH hold:
+    (1) SOME ancestor is a call to an Effect combinator whose callback body is an
+        Effect context — `Effect.gen(function*(){ … })`, `Effect.fn(function*(){ … })`,
+        `Effect.fnUntraced(...)`, or an `Effect.sync|suspend|try|tryPromise|promise`
+        thunk (the set is DELIBERATELY without `async`: the `Effect.async` REGISTER
+        callback is NOT an Effect context — it is the sanctioned imperative FFI seam where
+        you wire up a native timer/subscription and call `resume`, and the enforced
+        `globalTimersInEffect` itself does NOT flag a bare timer there — verified green on
+        `certify-runner.live.ts`'s `Effect.async` + `setTimeout` under
+        `globalTimersInEffect:"error"` — so excluding `async` keeps THIS guard a TRUE
+        subset of that rule and never emits a wrong "use `Effect.sleep`" advisory for the
+        legitimate subprocess-kill / socket-deadline seam. This is a DELIBERATE, principled
+        divergence from the `no-console`/`no-math-random` precedents, which include `async`;
+        for timers the async-register seam is exactly the sanctioned bare-timer site, so the
+        divergence matters here where it did not there. The SAME exclusion holds for the v4
+        rename of that combinator: effect v4 replaces `Effect.async` with `Effect.callback`
+        (verified in the `effect@4.0.0-rc.108` tarball: `dist/Effect.d.ts` declares `callback`
+        at :1463, ZERO `declare const async`), and `callback` is DELIBERATELY absent here too.
+        The console/math-random guards added `callback` beside `async` in their anchors; do
+        NOT propagate that edit into this rule — the register callback is still the FFI seam,
+        whatever it is spelled, and adding it would break this guard's true-subset property
+        against `globalTimersInEffect`); AND
+    (2) there is NO non-thunk `arrow_function` / `function_expression` /
+        `function_declaration` ANYWHERE on the ancestor chain between the call and the
+        root (clause (2) is an EXISTENCE check over ALL ancestor functions, not a
+        "nearest enclosing function" check — see the asymmetry in gap (g)).
+  The honest fix where it DOES fire is Effect's injectable scheduling: `yield* Effect.sleep`
+  (one-shot, `Clock`-driven, `TestClock`-controllable), `Effect.repeat`/`Schedule.spaced`
+  (recurring), and `Fiber.interrupt` / `Scope` close for cancellation (replacing the
+  `clearTimeout`/`clearInterval` handle dance) — injectable the same way `Clock` replaces
+  `Date.now()`.
+
+  Because of (2), the guard's realistic firing surface is SMALL and SHAPE-DEPENDENT: it
+  fires only on Effects defined at TOP LEVEL (`const x = Effect.sync(() => setTimeout(f, 5))`)
+  or wrapped in a CLASS/OBJECT METHOD (`method_definition`, which is not a matched function
+  kind). It is SILENT when the Effect is produced by a FACTORY arrow or function
+  (`const make = () => Effect.gen(…)`, `function make(){ return Effect.sync(…) }`) — the
+  dominant way real services are written — because that factory arrow/function is a
+  non-thunk ancestor and clause (2) suppresses the match. So this is a NARROW, IRREGULAR
+  advisory tripwire, NOT a "catch every timer call directly inside an Effect" gate. That
+  is acceptable BY DESIGN: the direction is SAFE (see below) and the HARD enforcement lives
+  in `globalTimersInEffect`, not here.
+
+  DIRECTION IS SAFE (false negatives only, never a false positive). Clause (1) requires an
+  Effect-thunk ancestor, so an ambient timer truly OUTSIDE any Effect context (the rejected
+  `globalTimers`'s ~196 sites: raw-SSE keepalive/heartbeat intervals on `Response` streams,
+  subprocess/socket kill-deadline watchdogs, injected timer seams, embedded browser-script
+  templates, `sleep(ms)` helpers in build/bench scripts, browser UI) can NEVER match. The
+  factory-wrap silence in gap (g) is a MISS, never a spurious fire. There is no gate-break
+  even were this flipped to `error` (it is `warning`; see the last paragraph).
+
+  RELATION TO `globalTimersInEffect` (Effect-LSP, `checkInEffect=TRUE`, enforced at `error`,
+  burned to 0): OVERLAPPING, not disjoint — this guard's matched shape is a strict SUBSET of
+  what that LSP rule enforces (that rule resolves Effect context semantically, so it ALSO
+  catches the factory-wrapped forms this guard misses). That is DELIBERATE and precedented:
+  the ambient-crypto guard (#1754) likewise overlaps the surviving `cryptoRandomUUIDInEffect`,
+  and `no-console-in-effect-context` / `no-math-random-in-effect-context` overlap
+  `globalConsoleInEffect` / `globalRandomInEffect`. `globalTimersInEffect` remains the HARD
+  gate (it reds `tsc`); THIS guard is a source-level, `.svelte`-aware ADVISORY echo of the
+  same axis. Its HONEST marginal value is narrow: DEFENSE-IN-DEPTH that survives on the
+  separate `pnpm lint:ast` gate even if the Effect-LSP `tsc` patch is ever lost, plus a
+  source-level presence in `.svelte` `<script>` regions via the sgconfig injection. It does
+  NOT (a deliberately un-asserted, undemonstrated claim) close a proven `.svelte` hole in
+  `globalTimersInEffect`-via-`check:svelte`, which ALREADY scans `.svelte`; treat it as
+  belt-and-braces, not as recovering a coverage gap. It is `warning` precisely because the
+  hard enforcement already lives in `globalTimersInEffect` — a redundant hard gate would only
+  add fragility.
+
+  RELATION TO THE REJECTED `globalTimers` (`checkInEffect=FALSE`): this guard fires on NONE
+  of the ~196 outside-Effect sites `globalTimers` flagged (staged-counts 134 + svelte-counts
+  62). That is not a gap — every one is a false positive for an "use `Effect.sleep`/`Schedule`"
+  demand: an enumerated audit found 0 genuine Effect-service opportunities. The non-test,
+  non-browser `.ts` residue is entirely BY-DESIGN raw timers at the Effect/outside-world SEAM,
+  where `Effect.sleep`/`Schedule` cannot honestly replace them without forcing Effect into
+  non-Effect code — SSE keepalive/heartbeat `setInterval`s on raw `Response` streams;
+  subprocess/socket kill-deadline `setTimeout`s whose callback is `proc.kill(9)` /
+  `process.kill(-pid, SIGKILL)` / `socket.end()` (`Effect.sleep` cannot kill a subprocess, and
+  a promise-level deadline is deliberately chosen over `Effect.timeout` so a late socket is
+  ended rather than leaked); injected timer seams whose DEFAULT impl is `setTimeout` /
+  `window.setInterval`; embedded browser-script templates; and `sleep(ms)` helpers in build/
+  bench scripts. The remainder is browser packages (svelte-ratchet: all async in plain browser
+  APIs) plus test scaffolding — all outside an Effect context, which is exactly WHY
+  `globalTimers` was rejected. This guard targets the disjoint inside-Effect shape, a
+  population already burned to 0 by `globalTimersInEffect@error`.
+
+  WHY NO PATH EXEMPTION (browser, scripts and the Node seam are NOT ignored by glob): unlike
+  ambient `crypto.randomUUID()` (correct Web Crypto in the browser, wrong in Node → #1754
+  needed browser globs), an ambient timer INSIDE an Effect context has no browser/Node split —
+  `Effect.sleep`/`Schedule`/`Fiber.interrupt` is the injectable idiom in browser Effect code
+  too, and no Effect runtime lives in a plain build script or at the raw-SSE / subprocess seam
+  to begin with. The browser/scripts/by-design-Node false-positive wall (the entire ~196-site
+  rejected `globalTimers` population) is excluded by MATCHER PRECISION (clause (1) requires an
+  Effect-thunk ancestor), NOT by glob (0 of the ~196 real sites fire). Adding path globs would
+  create a forward hole (a genuine browser-Effect or Effect-in-a-tool timer silently missed)
+  and a rotting hand-list, for no benefit.
+
+  BOUNDED GAPS — treat any form NOT here and NOT matched as an unreviewed hole:
+    a. NON-bare-identifier CALLEE SHAPES never match — the matcher anchors on a
+       `call_expression` whose `function` field is the literal identifier `setTimeout` /
+       `setInterval` / `clearTimeout` / `clearInterval` / `setImmediate`. Silent, by
+       construction: a MEMBER call (`window.setTimeout()`, `globalThis.setInterval()`,
+       `clock.setTimeout()`, `this.schedule()`), an ALIASED binding (`const st = setTimeout;
+       st(f, 5)`, or destructured `const { setTimeout: st } = globalThis; st(...)`), and a
+       timer REFERENCE passed WITHOUT calling (`onExit(clearTimeout)` — not a
+       `call_expression`). ast-grep is syntactic and cannot follow a binding to the global
+       timer. Each is strictly more work than the plain call, reads as deliberate evasion, and
+       is a SAFE-DIRECTION miss. (This is the SAME precision that intentionally lets an
+       injected `clock.setTimeout` / `Clock`-service call and a `window.setInterval` seam pass
+       silently — they are the correct idioms, not the ambient-global smell.)
+    b. `.tsx`/`.jsx`: `language: TypeScript` covers `.ts`/`.mts`/`.cts` and, via the sgconfig
+       injections, `.svelte` `<script>`/expression regions; ast-grep parses Tsx as a SEPARATE
+       language. Currently EMPTY: grep-verified 0 `.tsx` files with an ambient timer call AND
+       `Effect.*` in-tree. Same bounded-empty gap as #1754's / globalRandom's / globalConsole's
+       `.tsx` note.
+    c. The CURRIED `Effect.fn('name')(function*(){ … })` form is NOT matched (the outer call's
+       callee is `Effect.fn('name')`, which the `^Effect\.fn$` anchor does not match; the inner
+       `Effect.fn('name')` call does not contain the generator body). Non-curried
+       `Effect.fn(function*(){ … })` and `Effect.fnUntraced(...)` ARE matched. SAFE-DIRECTION
+       miss; `globalTimersInEffect` covers it.
+    d. HOIST-TO-HELPER laundering: pulling `setTimeout(...)` into a plain sync helper CALLED
+       FROM an Effect (dodging `globalTimersInEffect`). ast-grep has no cross-function
+       dataflow, so this is outside ANY syntactic guard's reach — the same class of gap #1754
+       accepted. Mitigated: the hoisted helper genuinely IS outside Effect (where a bare
+       ambient timer is the rejected `globalTimers`'s untouched turf anyway).
+    e. An intervening NON-thunk callback between the timer call and the thunk makes an
+       otherwise inside-`Effect.sync` site SILENT — `Effect.forEach(xs, () => Effect.sync(() =>
+       setTimeout(f, 5)))` (outer `forEach` arrow) or `Effect.sync(() => xs.map((n) =>
+       setTimeout(f, n)))` (inner `.map` arrow) — because that intervening arrow is a non-thunk
+       ancestor → clause (2) suppresses. SAFE-DIRECTION miss; `globalTimersInEffect` catches it.
+    f. NON-timer callees (`schedule()`, `defer()`, `queueMicrotask()`, `wait()`) NEVER match —
+       the function-field regex anchors on exactly the five ambient timer identifiers by
+       construction (this is the intended precision that lets an injected scheduler / a
+       `Clock`-service call pass silently).
+    g. FACTORY-WRAP silence + the arrow-vs-method ASYMMETRY (the largest and least-obvious gap,
+       consequence of clause (2) being an existence check). An ambient timer DIRECTLY in an
+       Effect thunk is SILENT when any factory `arrow_function`/`function_expression`/
+       `function_declaration` encloses that thunk (`const make = () => Effect.sync(() =>
+       setTimeout(f, 5))`, `function make(){ return Effect.gen(function*(){ setTimeout(f, 5) }) }`),
+       yet FIRES when the same Effect is a top-level binding or a CLASS/OBJECT METHOD
+       (`method_definition` is not a matched function kind: `class S { run(){ return
+       Effect.gen(function*(){ setTimeout(f, 5) }) } }` fires). This asymmetry is arbitrary and
+       accepted: widening clause (2) to close it would re-introduce the false positive on the
+       legit `Effect.sync(() => setTimeout(f, 5))` shape (whose timer call is itself inside an
+       arrow), which the double-negation exists to prevent, and would buy 0 today.
+       `globalTimersInEffect` is the semantic gate that catches the factory-wrapped forms.
+
+  There is NO harden-to-error burn-down here: the HARD gate is `globalTimersInEffect`. This
+  guard is advisory (`warning`) by design. To make it a hard source-level tripwire, flip
+  `severity: error` (safe today at 0 findings) — no browser/scripts `ignores:` globs are needed
+  or wanted (unlike the ambient-crypto guard), because the inside-Effect shape has no
+  browser/Node split; the browser, scripts and by-design-Node walls are matcher-excluded, not
+  path-excluded.
+
+  See `the plan-DB roadmap/effect-lsp record` (Rejected rules → globalTimers) and the plan store
+  `roadmap/effect-lsp` key `audit:globaltimers-classification`. Hostile-input proof:
+  `.ast-grep/tests/no-timers-in-effect-context-test.yml` (native, rule LOGIC) and
+  `.ast-grep/tests/no-timers-in-effect-context.injection.test.ts` (bun; proves the `.svelte`
+  injection is non-vacuous, the outside-Effect/browser/scripts/by-design-Node wall is silent by
+  construction, and the matcher excludes helper-arrows / factory-wraps / callbacks / member &
+  aliased timer calls).
+rule:
+  kind: call_expression
+  all:
+    # ANCHOR: the callee is one of the five ambient timer globals as a BARE identifier.
+    # A member call (window.setTimeout / clock.setTimeout / this.timer) has a member_expression
+    # function field whose text is `window.setTimeout` etc. and never matches this anchored regex
+    # — that is the deliberate ambient-global precision (gap a/f).
+    - has:
+        field: function
+        regex: '^(setTimeout|setInterval|clearTimeout|clearInterval|setImmediate)$'
+    # (1) SOME ancestor is a call to an Effect combinator whose callback body is an
+    #     Effect context. Thunk-body-is-Effect set only (gen/fn/fnUntraced/sync/
+    #     suspend/try/tryPromise/promise). NO `async`, and NO v4 `callback` (its rename):
+    #     the Effect.async/Effect.callback register callback is the sanctioned bare-timer FFI
+    #     seam (wire a native timer, call resume) and the enforced globalTimersInEffect does
+    #     NOT flag a timer there, so excluding BOTH spellings keeps this guard a TRUE subset
+    #     (deliberate divergence from the console/random precedents, which anchor both).
+    #     Deliberately EXCLUDES map/flatMap/forEach/tap — their callback bodies are pure
+    #     projections, NOT Effect contexts, so a bare ambient timer there is outside-Effect
+    #     (rejected globalTimers's turf).
+    #     V4 ADDITION, not a rename: `fn[A-Za-z]*` is a WILDCARD, not an enumeration.
+    #     effect v4 adds `Effect.fnUntracedEager` (`dist/Effect.d.ts` @since 4.0.0), a
+    #     generator-taking constructor with the same body shape as `fnUntraced`. The
+    #     complete v4 generator-taking set is gen | fn | fnUntraced | fnUntracedEager.
+    #     An ENUMERATION covered three of four and went BLIND inside the fourth — probe:
+    #     an identical body under `fnUntraced` matched and under `fnUntracedEager` matched
+    #     ZERO. That is a permanent silent zero, not a falling count: this rule is
+    #     unrecorded in the ratchet baseline, so a blinded arm reads as a clean tree and
+    #     `ratchet` never prints TIGHTENED. The prior v4 pass fixed the async -> callback
+    #     RENAME and never enumerated v4 ADDITIONS, which is how this survived. The
+    #     wildcard closes the next fn* variant in advance; do NOT collapse it back to a list.
+    - inside:
+        kind: call_expression
+        stopBy: end
+        has:
+          field: function
+          regex: '^Effect\.(gen|fn[A-Za-z]*|sync|suspend|try|tryPromise|promise)$'
+    # (2) EXISTENCE check: suppress if ANY ancestor arrow/function-expression/
+    #     function-declaration is a PLAIN helper — i.e. is NOT itself the thunk
+    #     `arguments` of an Effect combinator call. This makes helper arrows inside a
+    #     gen body, nested map/callback closures, AND factory-arrow/function wraps
+    #     (gap g) SILENT, while `Effect.sync(() => setTimeout(f, 5))` (the arrow IS the
+    #     thunk) at top level FIRES. The double-negation is load-bearing; do not
+    #     simplify without re-running the hostile fixtures (a bare
+    #     `not: {inside: {any:[arrow,...]}}` would wrongly silence the legit
+    #     direct-in-thunk case).
+    - not:
+        inside:
+          stopBy: end
+          any:
+            - kind: arrow_function
+            - kind: function_expression
+            - kind: function_declaration
+          not:
+            inside:
+              kind: arguments
+              inside:
+                kind: call_expression
+                has:
+                  field: function
+                  regex: '^Effect\.(gen|fn[A-Za-z]*|sync|suspend|try|tryPromise|promise)$'
+# ignores: (INTENTIONALLY ABSENT — see note "WHY NO PATH EXEMPTION")
+
+metadata:
+  enforces: "Timer scheduling inside an Effect context uses the injectable Clock-driven idiom (Effect.sleep / Schedule / Fiber.interrupt), never ambient setTimeout/setInterval/clearTimeout/clearInterval/setImmediate"
+  origin: "effect-lsp ratchet (retired 2026-07-21, plan-DB roadmap/effect-lsp); globalTimers reject-and-replace"

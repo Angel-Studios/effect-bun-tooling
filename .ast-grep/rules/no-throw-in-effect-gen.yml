@@ -1,0 +1,44 @@
+id: no-throw-in-effect-gen
+language: TypeScript
+severity: warning
+message: "throw inside an Effect.gen generator kills the fiber at construction time and bypasses the typed error channel. Use Effect.fail(TaggedError) for recoverable failures or Effect.die for invariant violations."
+note: |
+  A synchronous `throw` inside (or reachable from) an `Effect.gen` body fires at
+  Effect-CONSTRUCTION time, not run time, so `Effect.catchTag` / `catchAll` can
+  never reach it — the fiber dies and the typed error channel the caller wrote a
+  handler for never sees the error.
+
+  Fix:
+    - Recoverable failure  -> `yield* Effect.fail(new SomeTaggedError({ ... }))`
+    - Invariant violation  -> `yield* Effect.die(new SomeError(...))`
+    - Config/credential boundary -> validate at the Layer with
+      `Config.redacted` + `Schema.NonEmptyString` so the throw is unreachable.
+
+  See roadmap/type-safety-hardening/design-principles.md Principle 2 and
+  auto-memory feedback_no_throws_inside_effect_gen.
+
+  STAGED ENFORCEMENT: severity is `warning` while the Theme 2 throw sites are
+  being remediated across Phase 1/2 of the type-safety-hardening roadmap. Flip
+  to `error` once `ast-grep scan` reports zero matches for this rule (project
+  Definition of Done #2). This matches the no-oversize-file ratchet philosophy.
+metadata:
+  enforces: "No synchronous throw inside Effect.gen; failures go through the typed error channel via Effect.fail or Effect.die"
+  origin: "type-safety-hardening roadmap Phase 0, design-principles Principle 2 (#545)"
+rule:
+  pattern: throw $ERR
+  inside:
+    kind: generator_function
+    stopBy: end
+# Retargeted to THIS repo's source roots during assimilation. The ported globs named
+# `apps/**`, which does not exist here: a rule scoped only to it scanned ZERO files while
+# still appearing in the corpus, which reads exactly like a rule with nothing to report.
+files:
+  - "packages/**/*.ts"
+  - "scripts/**/*.ts"
+  - "tools/**/*.ts"
+  - "__e2e__/**/*.ts"
+ignores:
+  - "**/__test__/**"
+  - "**/__tests__/**"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"

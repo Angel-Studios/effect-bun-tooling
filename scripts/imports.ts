@@ -1,9 +1,16 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const transpiler = new Bun.Transpiler({ loader: 'ts' });
 
+/**
+ * Unlike `typeTargets` and `distFiles`, which return nothing for an absent `dist` because not
+ * having built yet is an ordinary state, an absent source directory is a broken package, and it
+ * would otherwise surface as a bare ENOENT thrown from inside a build-order computation.
+ */
 export const typeScriptFiles = (dir: string): readonly string[] => {
+  if (!existsSync(dir)) throw new Error(`${dir} does not exist, so no TypeScript source can be read from it`);
+
   const found: string[] = [];
   for (const entry of readdirSync(dir)) {
     const path = join(dir, entry);

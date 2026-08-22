@@ -1,0 +1,93 @@
+id: no-cross-package-relative-imports
+language: TypeScript
+severity: error
+message: "Relative import climbs into a SIBLING package's src/. Modules never reach into another package's internals: import through the package's public interface (its package.json `exports` subpaths) with a declared workspace dependency."
+note: |
+  A specifier like `../../../toolplane/src/exec/run.live` or
+  `../../../plan/src/chunk` bypasses the owning package's public surface: it
+  resolves regardless of what the package chose to export, couples the importer
+  to the sibling's internal layout, and breaks tooling that type-checks across
+  the boundary (a Svelte package's svelte-check cannot resolve another
+  package's `#/` imports map).
+
+  Allowed:
+    import { runCommand } from '@ultravisor/toolplane/exec/run.live';
+    import { chunk } from '@ultravisor/plan/chunk';
+
+  Forbidden:
+    import { runCommand } from '../../../toolplane/src/exec/run.live';
+    import type { ChunkDeclaration } from '../../../../plan/src/chunk';
+
+  To expose a new module across a package boundary, add an EXPLICIT entry to the
+  owning package's `exports` map (wire-contract packages use `"./*"` wildcards;
+  apps expose a curated list) and declare the `workspace:*` dependency in the
+  consumer.
+
+  BLAST RADIUS IS AN ENUMERATION, so it goes stale silently and must be
+  maintained (chunk P1, ultravisor-extraction). The alternation below lists this
+  repo's real workspace directory names, longest-first so a prefix cannot shadow
+  a longer sibling (`napi-ultravisor-store` before `store`). On arrival from
+  project-xavier it still named that repo's packages — `shadowcat`,
+  `shadowcat-ui`, `sentinel` — three trees that do not exist here, while
+  OMITTING `cli`, `egress-proxy`, `store`, `toolplane` and
+  `napi-ultravisor-store`, so a climb into the toolplane's or the store's
+  internals was unreachable by this guard. A glob census cannot catch that:
+  the `files:` glob was live the whole time and the blindness lived in the regex.
+
+  `files:` also gained `packages/**`, `tools/**` and `scripts/**`, since a
+  package, a tool or a repo-root script climbing into another workspace member is
+  the same defect as an app doing it and all three were out of scope. The optional
+  `(apps|packages)/` path segment exists for exactly those callers: from
+  `scripts/` the climb spells `../packages/toolplane/src/`, not
+  `../toolplane/src/`, so the sibling-shaped regex could not have matched it.
+
+  THIS RULE ABSORBED `scripts-no-plane-source-import`, deleted in the same pass.
+  That guard existed to stop the CONSUMER repo's `scripts/` reaching into the
+  plane subtree it was about to lose, and it matched on the literal
+  `tools/ultravisor` — a path that by construction cannot appear in an import
+  specifier here, so it could only ever pass, and its own rule-test was already
+  RED because the port rewrote the fixtures it matched on. Its underlying concern,
+  a repo-root script reaching into a package's internals, is a strict subset of
+  this rule and is now enforced by the rule that can actually see it.
+
+  All widenings measured at ZERO new violations on this tree.
+  ADDING A WORKSPACE DIRECTORY MEANS ADDING IT HERE, in all four arms.
+metadata:
+  enforces: "Imports never climb into a sibling package's src/; cross-package access goes through declared package.json exports subpaths"
+  origin: "repo-wide barrel dissolution (#1504); alternation re-derived, path shape widened, and scripts-no-plane-source-import absorbed by roadmap/ultravisor-extraction chunk P1"
+rule:
+  any:
+    # Static import, single quotes (Biome default) — covers `import type` too.
+    - all:
+        - pattern: "import $$$ from '$P'"
+        - has:
+            pattern: "'$P'"
+            regex: "^'(\\.\\./)+((apps|packages)/)?(napi-ultravisor-store|egress-proxy|node-agent|assimilator|extractors|toolplane|desktop|daemon|store|plan|wire|ui|cli)/src/"
+    # Static import, double quotes.
+    - all:
+        - pattern: 'import $$$ from "$P"'
+        - has:
+            pattern: '"$P"'
+            regex: '^"(\.\./)+((apps|packages)/)?(napi-ultravisor-store|egress-proxy|node-agent|assimilator|extractors|toolplane|desktop|daemon|store|plan|wire|ui|cli)/src/'
+    # Dynamic / type-position import, single quotes.
+    - all:
+        - pattern: "import('$P')"
+        - has:
+            stopBy: end
+            pattern: "'$P'"
+            regex: "^'(\\.\\./)+((apps|packages)/)?(napi-ultravisor-store|egress-proxy|node-agent|assimilator|extractors|toolplane|desktop|daemon|store|plan|wire|ui|cli)/src/"
+    # Dynamic / type-position import, double quotes.
+    - all:
+        - pattern: 'import("$P")'
+        - has:
+            stopBy: end
+            pattern: '"$P"'
+            regex: '^"(\.\./)+((apps|packages)/)?(napi-ultravisor-store|egress-proxy|node-agent|assimilator|extractors|toolplane|desktop|daemon|store|plan|wire|ui|cli)/src/'
+# Retargeted to THIS repo's source roots during assimilation. The ported globs named
+# `apps/**`, which does not exist here: a rule scoped only to it scanned ZERO files while
+# still appearing in the corpus, which reads exactly like a rule with nothing to report.
+files:
+  - "packages/**/*.ts"
+  - "scripts/**/*.ts"
+  - "tools/**/*.ts"
+  - "__e2e__/**/*.ts"

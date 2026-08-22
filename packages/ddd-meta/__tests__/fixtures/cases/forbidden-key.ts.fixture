@@ -1,0 +1,6 @@
+/* ---uv
+l = "domain"
+exports = "parseFrontMatter"
+--- */
+
+export const parseFrontMatter = () => undefined;

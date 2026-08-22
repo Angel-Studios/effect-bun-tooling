@@ -1,0 +1,15 @@
+apiVersion = 1
+
+# Only the two agents this repo actually carries a definition for. A roster entry naming a role
+# with no file behind it is a declaration that outruns its evidence: an operator reading the
+# profile would believe the repo can dispatch it. The ultravisor fleet roles (hypervisor,
+# orchestrator, memory-agent, task-runner) are deliberately absent because they coordinate through
+# a plan-keyed LMDB store this repo does not carry and should not take on a native dependency for.
+agentRoster = [
+  { name = "engineering-critic", stackTargets = [], roleClass = "repo-agnostic" },
+  { name = "effect-bun-tooling-engineer", stackTargets = ["ts-effect"], roleClass = "stack-conditional" },
+]
+
+egressAllowlist = [
+  { host = "registry.npmjs.org", reason = "bun install, and the pack job's tarball round-trip" },
+]

@@ -1,0 +1,48 @@
+id: no-unbounded-concurrency
+language: TypeScript
+severity: error
+message: "Unbounded concurrency can exhaust system resources (DB connections, file descriptors, memory). Use a numeric limit based on available resources."
+note: |
+  Use a bounded concurrency matching the resource being consumed:
+  connection pool size, CPU count, or a fixed cap. `Effect.all` over a
+  fixed-length literal array is still written with the literal length,
+  because the bound must be visible at the call site rather than implied
+  by the array.
+
+  MATCH ON THE PAIR, NOT ON THE OBJECT SHAPE. This rule used to read
+  `pattern: "{ concurrency: 'unbounded' }"`, an object literal with EXACTLY
+  ONE property. ast-grep matches structurally, so any sibling key defeated
+  it, and every site anyone actually writes carries one:
+  `{ concurrency: 'unbounded', discard: true }`. In the plane repo that hid
+  5 of 5 live sites while the rule reported a clean zero — a rule scanning
+  1,285 files and firing on nothing is indistinguishable from a clean tree.
+  Matching `kind: pair` makes the match independent of what else is in the
+  options object. Do NOT narrow this back to a pattern.
+metadata:
+  enforces: "Effect concurrency is always numerically bounded to the resource being consumed, never `unbounded`, regardless of what else the options object carries"
+  origin: "pre-ledger rule; bounded repo-wide and flipped to error in (#266); widened from an exact-object-shape pattern to a pair match in the ultravisor extraction (P2)"
+rule:
+  kind: pair
+  all:
+    - has:
+        field: key
+        regex: "^['\"`]?concurrency['\"`]?$"
+    - has:
+        field: value
+        regex: "^['\"`]unbounded['\"`]$"
+# Retargeted to THIS repo's source roots during assimilation. The ported globs named
+# `apps/**`, which does not exist here: a rule scoped only to it scanned ZERO files while
+# still appearing in the corpus, which reads exactly like a rule with nothing to report.
+files:
+  - "packages/**/*.ts"
+  - "scripts/**/*.ts"
+  - "tools/**/*.ts"
+  - "__e2e__/**/*.ts"
+ignores:
+  - "**/__test__/**"
+  - "**/__tests__/**"
+  - "**/*.test.ts"
+  - "**/*.itest.ts"
+  - "**/*.test.tsx"
+  - "**/*.itest.tsx"
+  - "**/scripts/**"

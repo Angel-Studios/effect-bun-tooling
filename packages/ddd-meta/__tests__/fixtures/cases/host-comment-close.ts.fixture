@@ -1,0 +1,6 @@
+/* ---uv
+l = "domain"
+links = { adr = "https://example.test/adr/a*/latest" }
+--- */
+
+export const value = 1;

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# ---uv
+# l = "infrastructure"
+# ---
+
+# ---uv
+# l = "domain"
+# ---
+
+set -euo pipefail

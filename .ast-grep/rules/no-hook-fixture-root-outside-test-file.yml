@@ -1,0 +1,115 @@
+id: no-hook-fixture-root-outside-test-file
+language: TypeScript
+severity: error
+message: "`@packages/effect-bun-test/fixture-root-suite` registers an `afterAll`, so it may be imported ONLY from a leaf test file (`*.test.ts` / `*.itest.ts`). bun runs every test file in ONE process with module caching, so a hook registered from a SHARED module registers in whichever test file imports it FIRST — and measured on bun 1.3.14 that is NOT argv order. The suite root is then deleted mid-run (later files ENOENT at fixture construction) and every file after the first leaks unreaped. Import `@packages/effect-bun-test/fixture-root` instead and own an explicit `dispose()`."
+note: |
+  HV-065, layer L2. The fixture-root helper is deliberately TWO modules:
+
+    @packages/effect-bun-test/fixture-root        hook-free core (node builtins only)
+    @packages/effect-bun-test/fixture-root-suite  core + one afterAll(dispose)
+
+  The split (layer L1) makes the hazard a STATIC IMPORT EDGE — exactly one
+  module specifier, in exactly one file class — which is the only form in
+  which it can be mechanically detected. This rule is that detection, and it
+  is what makes the guarantee structural rather than conventional.
+
+  MEASURED, on bun 1.3.14, with two test files each importing one shared
+  non-test module that calls `afterAll()` at module scope (the exact shape of
+  `packages/toolplane/src/resident/fixture.fixtures.ts`):
+
+    F1 SINGLE PROCESS   — identical pid across both files, so module caching
+                          applies and ONE hook registration is shared by every
+                          importer.
+    F2 PREMATURE TEARDOWN — the hook fires mid-run after the FIRST importing
+                          file only. A directory a later file still needs is
+                          deleted underneath it.
+    F3 REINTRODUCED LEAK — directories created by every file AFTER the first
+                          are never reaped at all.
+    F4 ORDER IS NOT DECLARATION ORDER — bun ran `b.test.ts` before `a.test.ts`
+                          despite argv order. "The first importer" is therefore
+                          not predictable across runs, which is why a
+                          convention-based mitigation is unverifiable by
+                          construction and why this must be a static guard.
+
+  ALLOWED anywhere:
+    import { makeFixtureRoot } from '@packages/effect-bun-test/fixture-root';
+    import type { FixtureRoot } from '@packages/effect-bun-test/fixture-root';
+
+  ALLOWED only in a leaf test file (see `ignores`):
+    import { suiteFixtureRoot } from '@packages/effect-bun-test/fixture-root-suite';
+
+  MATCHING. Static import, dynamic `import()`, and bare side-effect import, in
+  BOTH quote styles. The regex matches the specifier INCLUDING its quotes and
+  is anchored at both ends, so `fixture-root` (the core) and a hypothetical
+  `fixture-root-suite-helpers` are NOT prefix collisions.
+
+  The specifier alternation `^'([^']*/)?fixture-root-suite'$` deliberately
+  covers RELATIVE spellings (`./fixture-root-suite`,
+  `../../packages/effect-bun-test/src/fixture-root-suite`) as well as the
+  package subpath. `@packages/effect-bun-test` now ships from
+  Angel-Studios/effect-bun-tooling rather than living under `packages/`, so every
+  in-repo reach is a package subpath today — but the relative alternation stays,
+  because it is what makes a re-vendoring, a `paths` alias, or a copied helper
+  file fail the rule instead of evading it.
+
+  The hook module itself no longer has an `ignores` entry. It used to carry one
+  as documentation of intent (registering the hook IS its contract), inert by
+  construction because it imports only `./fixture-root`. With the module out of
+  the repo, this rule's `files:` globs cannot reach it and the entry was dead.
+metadata:
+  enforces: "The afterAll-registering fixture-root entry point is imported only from leaf test files; shared modules use the hook-free core and dispose explicitly"
+  origin: "HV-065 (plan-DB design 35rd9zqmmigza rule G1); ports PR #2046 / HV-058 `fluid:hv058-c2-shared-fixture-root`"
+rule:
+  any:
+    # Static import (double quotes)
+    - all:
+        - pattern: 'import $$$ from "$P"'
+        - has:
+            pattern: '"$P"'
+            regex: '^"([^"]*/)?fixture-root-suite"$'
+    # Static import (single quotes — Biome default in this repo)
+    - all:
+        - pattern: "import $$$ from '$P'"
+        - has:
+            pattern: "'$P'"
+            regex: "^'([^']*/)?fixture-root-suite'$"
+    # Dynamic import (double quotes)
+    - all:
+        - pattern: 'import("$P")'
+        - has:
+            stopBy: end
+            pattern: '"$P"'
+            regex: '^"([^"]*/)?fixture-root-suite"$'
+    # Dynamic import (single quotes)
+    - all:
+        - pattern: "import('$P')"
+        - has:
+            stopBy: end
+            pattern: "'$P'"
+            regex: "^'([^']*/)?fixture-root-suite'$"
+    # Bare side-effect import (double quotes)
+    - all:
+        - pattern: 'import "$P"'
+        - has:
+            pattern: '"$P"'
+            regex: '^"([^"]*/)?fixture-root-suite"$'
+    # Bare side-effect import (single quotes)
+    - all:
+        - pattern: "import '$P'"
+        - has:
+            pattern: "'$P'"
+            regex: "^'([^']*/)?fixture-root-suite'$"
+# Retargeted to THIS repo's source roots during assimilation. The ported globs named
+# `apps/**`, which does not exist here: a rule scoped only to it scanned ZERO files while
+# still appearing in the corpus, which reads exactly like a rule with nothing to report.
+files:
+  - "packages/**/*.ts"
+  - "scripts/**/*.ts"
+  - "tools/**/*.ts"
+  - "__e2e__/**/*.ts"
+ignores:
+  # Leaf test files: bun defers `describe()` bodies until after module evaluation, so a module-scope
+  # `suiteFixtureRoot()` here registers in the FILE root scope and the hook runs after every `describe`
+  # in that file — the property this helper exists to provide.
+  - "**/*.test.ts"
+  - "**/*.itest.ts"

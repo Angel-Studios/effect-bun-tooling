@@ -1,0 +1,131 @@
+id: effect-bun-test-no-leaked-global-it
+language: TypeScript
+severity: error
+message: "This `it` is the module-global, which a `layer()` block above has already overwritten. This test silently receives services it never declared. Use the `it` parameter passed into the `layer()` callback instead."
+note: |
+  `layer()` in @packages/effect-bun-test mutates the SHARED module-global `it`.
+  Its implementation ends in `args[0](makeIt(defaultApi))`, and `makeIt` is
+  `Object.assign(it, { effect, scoped, layer, ... })` where `it === defaultApi ===
+  the exported module-global`. The assignment is permanent: it is never restored
+  when the block ends.
+
+  So any LATER use of the global `it.effect` / `it.scoped` / `it.layer` is served
+  by the previous block's layer runtime. The test picks up services it never asked
+  for. That is silent — it usually still passes, and when it does fail it points
+  nowhere near the `layer()` block that caused it.
+
+      layer(Foo.Live)((it) => {
+        it.effect('declares Foo', () => ...)   // correct: the parameter shadows the global
+      })
+
+      it.effect('never asked for Foo', () => ...)   // FLAGGED: receives Foo anyway
+
+  The fix is always the same: take the `it` handed to the `layer()` callback, which
+  is the block-scoped tester, and never reach past it to the module-global.
+
+  If a test genuinely must NOT see the layer, use the standalone `effect` / `scoped`
+  exports instead of `it.effect` / `it.scoped`. Those are destructured once at module
+  evaluation, so they hold the pristine testers and are immune to the mutation
+  (verified: `Object.assign` replaces the PROPERTY on `it`, not the earlier binding).
+
+  Scope of this rule, all established by measurement, not assumption:
+    * Only `effect`, `scoped` and `layer` are actually overwritten with
+      LAYER-BOUND values. Verified against this repo's own source at
+      `packages/effect-bun-test/src/internal/internal.ts`, whose `makeIt` reads
+      `Object.assign(it, { effect, prop, scoped, flakyTest, layer })`: `prop` and
+      `flakyTest` ARE assigned, but as shorthand references to the pristine
+      module-scope bindings, so they capture no layer context; `live` and
+      `scopedLive` are not assigned at all. The exclusion is therefore right for
+      all four, but for two DIFFERENT reasons — do not read "excluded" as "absent
+      from the assign", and do not widen the constraint on the strength of
+      spotting `prop`/`flakyTest` in that object literal. bun's own `it.skip` /
+      `it.only` / `it.each` / `it.todo` and the bare `it(...)` callable are
+      untouched. Flagging any of these would be a false positive, so the rule does not.
+    * EFFECT-VERSION INDEPENDENT, checked rather than assumed. These are the
+      HARNESS's own API names, not re-exports of Effect symbols, so no Effect
+      rename can move them. The installed 0.4.1 tarball is already v4-native
+      (`peerDependencies` pins `effect >=4.0.0-rc.109 <5`), and its `scoped` is
+      built on `Effect.scoped`, which SURVIVES in v4 — the v4 rename was
+      `Layer.scoped` -> `Layer.effect`, which this helper never used.
+    * `describe(...)` bodies are DEFERRED by bun until after module evaluation
+      (proved: module-start, module-end, describe-body). A `layer()` nested inside a
+      `describe` therefore cannot poison a top-level test that already evaluated, so
+      the rule only relates a usage to a `layer()` call that is a direct sibling
+      statement in the same block — the same deferral phase.
+metadata:
+  enforces: "A test never reaches past the layer() callback's `it` to the module-global `it`, which layer() permanently overwrites"
+  origin: "FM-0006"
+rule:
+  all:
+    # The usage: a member access on the identifier `it`.
+    - pattern: it.$METHOD
+    # NOT lexically shadowed. `layer(L)((it) => ...)` binds a block-scoped tester and
+    # is the CORRECT form, so any usage inside a function whose parameter is named
+    # `it` is excluded. Both `(it) => {}` (parameters field) and `it => {}`
+    # (parameter field) shapes, and function expressions, are covered.
+    - not:
+        inside:
+          stopBy: end
+          any:
+            - has:
+                field: parameters
+                stopBy: neighbor
+                has:
+                  kind: identifier
+                  regex: '^it$'
+                  stopBy: end
+            - has:
+                field: parameter
+                stopBy: neighbor
+                regex: '^it$'
+    - any:
+        # Exposure 1: the usage (or an ancestor of it) follows a `layer()` block that
+        # is a direct sibling statement. `has: stopBy: neighbor` keeps this to the
+        # statement's OWN expression, so a `layer()` buried inside a deferred
+        # `describe` body is correctly not treated as poisoning earlier top-level code.
+        - inside:
+            stopBy: end
+            follows:
+              stopBy: end
+              kind: expression_statement
+              has:
+                stopBy: neighbor
+                any:
+                  - pattern: layer($$$LAYER_ARGS)($$$BLOCK_ARGS)
+                  - pattern: $OBJ.layer($$$LAYER_ARGS)($$$BLOCK_ARGS)
+        # Exposure 2: the usage sits INSIDE a `layer()` callback but is not shadowed,
+        # because the callback parameter was omitted or named something other than
+        # `it`. `makeIt` mutates the global before invoking the callback, so the global
+        # is already poisoned at that point.
+        #
+        # The usage must be inside the callback FUNCTION, not merely anywhere inside
+        # the call expression. Without that inner hop, the `it.layer` in a legitimate
+        # top-level `it.layer(L)((it) => ...)` would match itself: the callee head is a
+        # descendant of its own call, and that opening block is correct, common usage.
+        - inside:
+            stopBy: end
+            any:
+              - kind: arrow_function
+              - kind: function_expression
+              - kind: function_declaration
+            inside:
+              stopBy: end
+              any:
+                - pattern: layer($$$LAYER_ARGS2)($$$BLOCK_ARGS2)
+                - pattern: $OBJ2.layer($$$LAYER_ARGS2)($$$BLOCK_ARGS2)
+constraints:
+  METHOD:
+    # Exactly the three properties `makeIt` actually replaces with layer-bound values.
+    regex: '^(effect|scoped|layer)$'
+files:
+  - "packages/**/*.ts"
+  - "__e2e__/**/*.ts"
+ignores:
+  # THE HARNESS'S OWN PROBE OF THE DEFECT THIS RULE DESCRIBES. This file exists to assert
+  # that a top-level `it.effect` still resolves against its own TestClock after an
+  # `excludeTestServices` layer() block has run — i.e. it reaches for the module-global
+  # deliberately, as the system under test. The rule matches it correctly; the file is the
+  # intentional counter-example, so silencing it here is naming a true positive as expected,
+  # not weakening the rule. If this file ever stops carrying a post-layer() global `it`
+  # usage, the exemption has outlived its reason and should be deleted.
+  - "packages/effect-bun-test/__tests__/test-services-isolation.test.ts"

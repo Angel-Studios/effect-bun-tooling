@@ -1,0 +1,24 @@
+# ast-grep configuration for effect-bun-tooling.
+#
+# The rule corpus is the stack-generic TypeScript + Effect set the ultravisor ts-effect stack
+# pack declares in its lintFragments. Rules that are specific to a consuming repo's own domain
+# (napi bindings, Svelte components, a particular service's wire shape) are deliberately absent:
+# this repo publishes general-purpose test tooling, so a rule here has to hold for every
+# consumer of these packages, not for one tree.
+#
+# Two ultravisor rules are deliberately NOT ported, and the omission is a decision rather than
+# an oversight:
+#   * no-prose-comments — ultravisor bans prose comments outright and carries the intent in
+#     names, structure and tests. This repo publishes source-TypeScript packages consumed with
+#     no build step, where an explanatory comment IS part of the shipped artifact and its
+#     established authoring convention. Porting the ban would flag hundreds of deliberate,
+#     load-bearing comments.
+#   * no-console-log-json-payload — scoped to a toolplane CLI path that does not exist here.
+#
+# No custom languages are registered: this repo has no Svelte source of its own. The
+# `@packages/bun-svelte-test` package COMPILES Svelte for its consumers but contains none.
+ruleDirs:
+  - .ast-grep/rules
+
+testConfigs:
+  - testDir: .ast-grep/tests

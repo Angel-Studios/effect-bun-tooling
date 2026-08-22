@@ -1,0 +1,6 @@
+/* ---uv
+--- */
+
+:root {
+  --color-void: #0e0e0e;
+}

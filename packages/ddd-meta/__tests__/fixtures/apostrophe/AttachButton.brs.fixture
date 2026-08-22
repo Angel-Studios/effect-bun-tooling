@@ -1,0 +1,12 @@
+' CI1 mechanism-proof + scope-gate fixture (DISTINCT name from the real registry so a
+' mis-keyed registry row is visible). A minimal attach-only focusable with a `sub init()`
+' that binds a BARE LOCAL (`startColor`) — used by the scope-binding gate test (a valid
+' requiresInScope name resolves; a bogus one hard-fails). No onKeyEvent.
+sub init()
+    startColor = m.global.COLORS.WHITE
+    m.label = m.top.findNode("label")
+    m.color = startColor
+    m.scale = 1.1
+end sub
+
+sub handleFocus(evt as dynamic)

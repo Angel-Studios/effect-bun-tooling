@@ -4,6 +4,10 @@ import { join } from 'node:path';
 import { bareImportsOf, typeScriptFiles } from '../imports';
 import {
   DIST_DIR,
+  distSubpathCarriesLeaf,
+  distSubpathOfJsTarget,
+  distSubpathOfTypesTarget,
+  exportSubpathLeaf,
   publishablePackages,
   readManifest,
   repoRoot,
@@ -91,15 +95,36 @@ describe('publishable package contract', () => {
         expect(manifest.files).toEqual([DIST_DIR, 'README.md', 'LICENSE']);
       });
 
-      it('exports built JavaScript with a declaration beside it, never source TypeScript', () => {
+      // The condition LIST is pinned, not just the two conditions read below. A `require` or
+      // `browser` condition naming a file the build never emits would otherwise ship at exit 0:
+      // nothing downstream reads it, and these packages reach consumers as tarballs.
+      it('exports built JavaScript with its declaration at the same dist path, and no other condition', () => {
         const entries = Object.entries(manifest.exports ?? {});
         expect(entries.length).toBeGreaterThan(0);
         for (const [subpath, entry] of entries) {
-          expect({ subpath, ...entry }).toEqual({
+          expect({
             subpath,
-            types: `./${DIST_DIR}/${subpath === '.' ? 'index' : subpath.slice(2)}.d.ts`,
-            default: `./${DIST_DIR}/${subpath === '.' ? 'index' : subpath.slice(2)}.js`,
-          });
+            conditions: Object.keys(entry).sort(),
+            sameDistPath:
+              distSubpathOfJsTarget(entry.default ?? '') === distSubpathOfTypesTarget(entry.types ?? ''),
+          }).toEqual({ subpath, conditions: ['default', 'types'], sameDistPath: true });
+        }
+      });
+
+      // Public subpaths are frozen for consumers while `src/` is free to nest beneath them, so what
+      // a SUBPATH can pin is the leaf. The prefix is not given up: `build-output-parity.test.ts`
+      // pins it against the source tree by requiring the leaf to name exactly one module. Removing
+      // either assertion leaves the other accepting a subpath wired to the wrong module.
+      it('names each exported subpath after the module it resolves to, wherever that module sits', () => {
+        for (const [subpath, entry] of Object.entries(manifest.exports ?? {})) {
+          const distSubpath = distSubpathOfJsTarget(entry.default ?? '');
+          const leaf = exportSubpathLeaf(subpath);
+          expect({
+            subpath,
+            distSubpath,
+            leaf,
+            resolves: distSubpathCarriesLeaf(distSubpath, leaf),
+          }).toEqual({ subpath, distSubpath, leaf, resolves: true });
         }
       });
 

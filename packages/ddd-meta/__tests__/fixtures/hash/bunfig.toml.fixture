@@ -1,0 +1,12 @@
+# bun is the only runtime this repo executes. Neither of the settings below is a preference; each
+# closes a path that silently shells out to node.
+
+# Run package bins with bun. A bin like `node_modules/.bin/tsc` carries a `#!/usr/bin/env node`
+# shebang, which `bun run` would otherwise honour by spawning node.
+[run]
+bun = true
+
+[test]
+onlyFailures = true
+root = "scripts"
+

@@ -1,0 +1,95 @@
+apiVersion = 1
+
+poolPin = "51440d67ce2b0446ebd746551bc3cca41a4321a0e5c4db18160629cf67bdab7c"
+
+[[contractFingerprints]]
+path = ".claude/agents/engineering/effect-bun-tooling-engineer.md"
+hash = "1a8f13ff31cf684d21b0b8f9cdda9f1668b656d9fafb5a87b33dabbf469859fd"
+
+[[contractFingerprints]]
+path = ".claude/agents/engineering/engineering-critic.md"
+hash = "22552c80cd8f8a81787a637b711e7576f3823921459024c817112b807806e9ed"
+
+[[contractFingerprints]]
+path = ".claude/hooks/_lib-hypervisor.sh"
+hash = "d48b5408d1047208696c274e4a9259d2de7d8e0e8b4a28c6ef1031ab49e9f72a"
+
+[[contractFingerprints]]
+path = ".claude/hooks/_lib-tokenize.sh"
+hash = "a809d69f684d0fb841da1c7b4481a197ed81f39994cad6ddeed774be289af83e"
+
+[[contractFingerprints]]
+path = ".claude/hooks/instructions-loaded-log.sh"
+hash = "f74d48060016ab84327813bf1e7d46b877db07e04de7cb0b88924a99e1fc6d6a"
+
+[[contractFingerprints]]
+path = ".claude/hooks/post-edit-ast-grep.sh"
+hash = "f2093a83d5a0ca2333c7bd1f28f8697b04c5982c5de17cc4ebfb43802b58db32"
+
+[[contractFingerprints]]
+path = ".claude/hooks/post-edit-biome.sh"
+hash = "bd094c8ce42e4564457b8e3e9f42e3a844cd53bac7f84e91663f7e9be0a4ac99"
+
+[[contractFingerprints]]
+path = ".claude/hooks/pre-commit-dod.sh"
+hash = "08dc6f40c4e896e6d8082572133eb5c08d12ea30edf0c2eae64a328bb15f9866"
+
+[[contractFingerprints]]
+path = ".claude/hooks/pre-compact-hypervisor-checkpoint.sh"
+hash = "7686c32a6862a46e304ba10ebfa4cc812f31324bf6400ec4e5083b217a09df59"
+
+[[contractFingerprints]]
+path = ".claude/hooks/pre-edit-claude-md-lint.sh"
+hash = "416ffc50aadf568811fc6b868f918319d26ceae3ed124457ce6c03091a1aa7dd"
+
+[[contractFingerprints]]
+path = ".claude/hooks/pre-git-destructive.sh"
+hash = "339b3015af3eb858ce86695214ea1a18275df0ebd2b874ca2e3876c96ca6e9a4"
+
+[[contractFingerprints]]
+path = ".claude/hooks/session-start-hypervisor-reanchor.sh"
+hash = "882422b45231cd5db82c89c09d81f0252cd7b6fa9475301b37804d9218798244"
+
+[[contractFingerprints]]
+path = ".claude/settings.json"
+hash = "fdc0c6cdd7e54bbf2848c7c68af8d581927e9347b498dfe16f9a814a4c8c2ad1"
+
+[[contractFingerprints]]
+path = ".toolplane/agents.toml"
+hash = "382b27049190745f5689daddeb52bcc0bedbe3dc52bf4a9275fd665813af8729"
+
+[[contractFingerprints]]
+path = ".toolplane/config.toml"
+hash = "a4baab15d9ecd82a37bc07926d17e9b47dc2dabfac3c5511ebc786e98686ab86"
+
+[[contractFingerprints]]
+path = ".toolplane/gates.toml"
+hash = "2f86140e4ee304c9b87eb44e66e4500430bf0a22e43b5a62f7276e59ed06dc22"
+
+[[contractFingerprints]]
+path = ".toolplane/graph.toml"
+hash = "caca60ee1354ee6b806c3231a7e7f12e00369f740140240bd795b9f12abaa8a9"
+
+[[contractFingerprints]]
+path = ".toolplane/pool.toml"
+hash = "a161936213baf91d31ec80625f2b6bbab04add6b9fc7c6417e05da0483f3bd34"
+
+[[contractFingerprints]]
+path = "CLAUDE.md"
+hash = "0053ebf2b94aad9878c645fe2363011cb43d7b8a2240f93fb272d1aa692c7a7b"
+
+[[contractFingerprints]]
+path = "bunfig.toml"
+hash = "6ae8f83409db52f7b92ea917bbcc0603e9d251ec188f9bdc6d63329f78b26974"
+
+[[contractFingerprints]]
+path = "package.json"
+hash = "1a8e7eded6258762d77b8e5ac46a64656eef12dd9891087767a0d9b3d276365d"
+
+[[contractFingerprints]]
+path = "sgconfig.yml"
+hash = "4c89f0bd5160c772f886caf22d967edc7caa52d0f69a0a3b401feb4a0de53763"
+
+[[contractFingerprints]]
+path = "tools/lint-claude-md/lint-claude-md.ts"
+hash = "499e6fb17a8b4144da8ebc212ebbd731872d3edd03516646e3577dbfcb991613"

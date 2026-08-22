@@ -128,11 +128,31 @@ export const withVersion = (source: string, version: string): string => {
   return `${source.slice(0, span.start)}${version}${source.slice(span.end)}`;
 };
 
-/** `./dist/<name>.js` is built from `src/<name>.ts`; that pairing is the build's only input. */
+/** `./dist/<path>.js` is built from `src/<path>.ts`; that pairing is the build's only input.
+ *  `SOURCE_DIR` reaches the bundler directly as `--root`, and reaches `tsc` only as a `rootDir`
+ *  string repeated in each `tsconfig.build.json`; `build-output-parity.test.ts` is what holds the
+ *  two spellings together, so neither emitter may infer a root of its own. */
 export const DIST_DIR = 'dist';
 export const SOURCE_DIR = 'src';
+export const DECLARATION_SUFFIX = '.d.ts';
 
-const DIST_TARGET = new RegExp(`^\\./${DIST_DIR}/(.+)\\.js$`);
+const DIST_JS_TARGET = new RegExp(`^\\./${DIST_DIR}/(.+)\\.js$`);
+const DIST_TYPES_TARGET = new RegExp(`^\\./${DIST_DIR}/(.+)\\.d\\.ts$`);
+
+const distSubpathOf = (target: string, pattern: RegExp, shape: string): string => {
+  const match = pattern.exec(target);
+  if (match?.[1] === undefined) {
+    throw new Error(`${target} is not a ./${DIST_DIR}/${shape} export target, so no source file maps to it`);
+  }
+  return match[1];
+};
+
+/** The dist-relative path an `exports` target names, with `./dist/` and the extension removed. */
+export const distSubpathOfJsTarget = (target: string): string =>
+  distSubpathOf(target, DIST_JS_TARGET, '*.js');
+
+export const distSubpathOfTypesTarget = (target: string): string =>
+  distSubpathOf(target, DIST_TYPES_TARGET, `*${DECLARATION_SUFFIX}`);
 
 /**
  * The source file behind an `exports` target, as a package-relative path.
@@ -141,13 +161,33 @@ const DIST_TARGET = new RegExp(`^\\./${DIST_DIR}/(.+)\\.js$`);
  * map the single statement of what a consumer can reach: a subpath nobody exports is never
  * built, and a subpath that is exported cannot be forgotten by the build.
  */
-export const sourceOfDistTarget = (target: string): string => {
-  const match = DIST_TARGET.exec(target);
-  if (match?.[1] === undefined) {
-    throw new Error(`${target} is not a ./${DIST_DIR}/*.js export target, so no source file maps to it`);
+export const sourceOfDistTarget = (target: string): string =>
+  `${SOURCE_DIR}/${distSubpathOfJsTarget(target)}.ts`;
+
+/** The basename a bare `.` subpath is published under, since a dist path cannot be empty. */
+export const EXPORT_ROOT_BASENAME = 'index';
+
+/** The part of a public subpath that names a module rather than locating it. */
+export const exportSubpathLeaf = (subpath: string): string => {
+  if (subpath === '.') return EXPORT_ROOT_BASENAME;
+  if (!subpath.startsWith('./')) {
+    throw new Error(`${subpath} is neither '.' nor a './'-prefixed exports subpath`);
   }
-  return `${SOURCE_DIR}/${match[1]}.ts`;
+  return subpath.slice(2);
 };
+
+/**
+ * Whether a dist path ends at the module the public subpath names, at a segment boundary.
+ *
+ * Public subpaths are frozen while `src/` is free to nest beneath them, so the SUBPATH can pin only
+ * the leaf. It does not follow that the prefix is unpinned: `build-output-parity.test.ts` pins it
+ * against the real source tree, by requiring the leaf to name exactly one source module. This
+ * function is safe as a public-contract check only in that conjunction — on its own it accepts any
+ * existing directory. On a flat layout the prefix is empty and this is equality, which is the
+ * identity it replaces.
+ */
+export const distSubpathCarriesLeaf = (distSubpath: string, leaf: string): boolean =>
+  distSubpath === leaf || distSubpath.endsWith(`/${leaf}`);
 
 export const sourceEntrypoints = (pkg: WorkspacePackage): readonly string[] =>
   Object.values(pkg.manifest.exports ?? {}).map((entry) => sourceOfDistTarget(entry.default));
@@ -172,8 +212,6 @@ export const workspaceSiblingsOf = (
       candidate.manifest.name.startsWith(WORKSPACE_SCOPE) && imported.has(candidate.manifest.name),
   );
 };
-
-const DECLARATION_SUFFIX = '.d.ts';
 
 /** Every declaration file a package emits for its OWN source, excluding folded-in siblings. */
 export const typeTargets = (pkg: WorkspacePackage, exclude: readonly string[] = []): readonly string[] => {

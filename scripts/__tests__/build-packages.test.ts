@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import { buildOrder, externalsOf, withBuiltinPrefixes } from '../build-packages';
 import {
+  distSubpathCarriesLeaf,
+  distSubpathOfJsTarget,
+  distSubpathOfTypesTarget,
+  EXPORT_ROOT_BASENAME,
+  exportSubpathLeaf,
   publishablePackages,
   sourceEntrypoints,
   sourceOfDistTarget,
@@ -90,6 +95,74 @@ describe('sourceOfDistTarget', () => {
 
   it('refuses a target that is not built JavaScript, rather than inventing a source path for it', () => {
     expect(() => sourceOfDistTarget('./src/index.ts')).toThrow(/not a \.\/dist\/\*\.js export target/);
+  });
+});
+
+describe('distSubpathOfJsTarget and distSubpathOfTypesTarget', () => {
+  it('strips the dist directory and the extension, leaving the path the two emitters share', () => {
+    expect(distSubpathOfJsTarget('./dist/tag.js')).toBe('tag');
+    expect(distSubpathOfTypesTarget('./dist/tag.d.ts')).toBe('tag');
+    expect(distSubpathOfJsTarget('./dist/bc_identity/l_domain/tag.js')).toBe('bc_identity/l_domain/tag');
+    expect(distSubpathOfTypesTarget('./dist/bc_identity/l_domain/tag.d.ts')).toBe('bc_identity/l_domain/tag');
+  });
+
+  it('keeps a dotted subpath whole rather than truncating at the first dot', () => {
+    expect(distSubpathOfJsTarget('./dist/layer.live.js')).toBe('layer.live');
+    expect(distSubpathOfTypesTarget('./dist/layer.live.d.ts')).toBe('layer.live');
+  });
+
+  it('refuses a declaration where JavaScript is required, and the reverse', () => {
+    expect(() => distSubpathOfJsTarget('./dist/tag.d.ts')).toThrow(/not a \.\/dist\/\*\.js/);
+    expect(() => distSubpathOfTypesTarget('./dist/tag.js')).toThrow(/not a \.\/dist\/\*\.d\.ts/);
+  });
+
+  it('refuses a near-miss extension rather than reading it as a declaration', () => {
+    expect(() => distSubpathOfTypesTarget('./dist/tag.dXts')).toThrow(/not a \.\/dist\/\*\.d\.ts/);
+  });
+
+  it('refuses a target outside dist, so no export can point at source', () => {
+    expect(() => distSubpathOfJsTarget('./src/tag.js')).toThrow(/not a \.\/dist\/\*\.js/);
+  });
+});
+
+describe('exportSubpathLeaf', () => {
+  it('names the root subpath after the basename a dist path can actually carry', () => {
+    expect(exportSubpathLeaf('.')).toBe(EXPORT_ROOT_BASENAME);
+  });
+
+  it('drops the leading marker and keeps every segment a consumer types', () => {
+    expect(exportSubpathLeaf('./tag')).toBe('tag');
+    expect(exportSubpathLeaf('./layer.live')).toBe('layer.live');
+    expect(exportSubpathLeaf('./app-doubles/state')).toBe('app-doubles/state');
+  });
+
+  it('refuses a subpath node itself would not accept, rather than silently slicing two characters', () => {
+    expect(() => exportSubpathLeaf('tag')).toThrow(/neither '\.' nor a '\.\/'-prefixed exports subpath/);
+  });
+});
+
+describe('distSubpathCarriesLeaf', () => {
+  it('accepts the flat layout, where the dist path IS the leaf', () => {
+    expect(distSubpathCarriesLeaf('tag', 'tag')).toBe(true);
+    expect(distSubpathCarriesLeaf('app-doubles/state', 'app-doubles/state')).toBe(true);
+  });
+
+  // The branch DD-9 exists for. Nothing in the repository reaches it until M2 nests `src/`, so it
+  // is covered here rather than left to be exercised for the first time by the migration itself.
+  it('accepts a nested dist path that still ends at the leaf, which is what frees the prefix', () => {
+    expect(distSubpathCarriesLeaf('bc_identity/tag', 'tag')).toBe(true);
+    expect(distSubpathCarriesLeaf('bc_identity/l_domain/tag', 'tag')).toBe(true);
+    expect(distSubpathCarriesLeaf('bc_identity/app-doubles/state', 'app-doubles/state')).toBe(true);
+  });
+
+  it('refuses a dist path naming a different module, which is the wiring the flat pin used to prevent', () => {
+    expect(distSubpathCarriesLeaf('bc_identity/uuid', 'tag')).toBe(false);
+    expect(distSubpathCarriesLeaf('bc_identity/state', 'app-doubles/state')).toBe(false);
+  });
+
+  it('matches only at a segment boundary, so a longer name never passes as the leaf', () => {
+    expect(distSubpathCarriesLeaf('mytag', 'tag')).toBe(false);
+    expect(distSubpathCarriesLeaf('bc_identity/mytag', 'tag')).toBe(false);
   });
 });
 

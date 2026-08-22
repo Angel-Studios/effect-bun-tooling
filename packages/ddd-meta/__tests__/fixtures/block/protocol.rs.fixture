@@ -1,0 +1,13 @@
+//! The Unix-domain-socket NDJSON line protocol spoken with the SOFA supervisor.
+//!
+//! One JSON object per line, three kinds:
+//! - request  `{"id":N,"op":"...","args":{...}}`
+//! - response `{"id":N,"ok":{...}}` or `{"id":N,"err":{"_tag":"...","message":"..."}}`
+//! - event    `{"event":"...","...":...}` (unsolicited; no id)
+//!
+//! The canonical contract (and the matching TypeScript types) live in
+//! `packages/sofa-bt-hid-protocol`. Op names, event names, and error `_tag`s are
+//! versioned one-way doors — see the implementation plan.
+
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};

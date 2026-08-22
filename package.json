@@ -20,7 +20,11 @@
       "@types/node": "24.12.4",
       "@types/bun": "1.3.14",
       "effect": "4.0.0-rc.110",
-      "typescript": "7.0.2"
+      "typescript": "7.0.2",
+      "@ast-grep/cli": "0.42.2",
+      "mdast-util-from-markdown": "2.0.2",
+      "unist-util-visit": "5.0.0",
+      "@types/mdast": "4.0.4"
     }
   },
   "engines": {
@@ -34,17 +38,24 @@
     "lint:effect": "effect-tsgo diagnostics --project tsconfig.json && bun run --filter '@packages/*' lint:effect",
     "test:unit:once": "bun test && bun run --filter '@packages/*' test:unit:once",
     "test:e2e": "bun run build && bun test ./__e2e__/*.e2e.test.ts",
-    "dod": "bun run build && bun run tsc && bun run lint:effect && bun run test:unit:once && bun run check:ci",
+    "dod": "bun run build && bun run tsc && bun run lint:effect && bun run test:unit:once && bun run lint:ast && bun run lint:claude-md && bun run check:ci",
     "pack:workspace": "bun scripts/pack-workspace.ts",
-    "version:set": "bun scripts/set-version.ts"
+    "version:set": "bun scripts/set-version.ts",
+    "lint:ast": "ast-grep scan",
+    "lint:ast:test": "ast-grep test",
+    "lint:claude-md": "bun tools/lint-claude-md/lint-claude-md.ts"
   },
   "devDependencies": {
+    "@ast-grep/cli": "catalog:",
     "@biomejs/biome": "catalog:",
     "@effect/tsgo": "catalog:",
     "@packages/fixture-residue": "workspace:*",
     "@types/bun": "catalog:",
+    "@types/mdast": "catalog:",
     "@types/node": "catalog:",
     "effect": "catalog:",
-    "typescript": "catalog:"
+    "mdast-util-from-markdown": "catalog:",
+    "typescript": "catalog:",
+    "unist-util-visit": "catalog:"
   }
 }

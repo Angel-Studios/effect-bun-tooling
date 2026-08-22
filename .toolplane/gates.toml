@@ -1,0 +1,140 @@
+apiVersion = 1
+
+# EVERY dodGate BELOW THAT SHARES AN ID WITH A ts-effect PACK GATE OVERRIDES IT. The pack ships
+# `pnpm`-spelled commands because it was written for a pnpm monorepo; this repo declares
+# `packageManager: bun` and commits only bun.lock, so the pack's spelling would fail on a machine
+# that has no pnpm install of these workspaces. The repo-binding layer is exactly where that
+# retarget belongs: composition records each one as an OverrideRecord, so the divergence from the
+# pack is visible rather than implied.
+dodGates = [
+  # `build` is repo-added, not a pack gate. It is mutating, so it runs in the sequential mutating
+  # batch before the read-only gates. The published packages ship `dist` and the e2e suite installs
+  # real tarballs, so a type error reachable only from a built entry point is invisible until the
+  # build has run.
+  { id = "build", command = "bun run build", mutatesTree = true, timeoutMs = 600000 },
+  { id = "typecheck", command = "bun run tsc", timeoutMs = 600000 },
+  { id = "test-unit", command = "bun run test:unit:once", timeoutMs = 900000 },
+  { id = "biome-check", command = "bun run check", mutatesTree = true, timeoutMs = 300000 },
+  { id = "lint-ast", command = "bun run lint:ast", timeoutMs = 300000 },
+  { id = "lint-claude-md", command = "bun run lint:claude-md", timeoutMs = 300000 },
+  # Also repo-added: the Effect language-service diagnostics pass. A DISTINCT failure class from
+  # `typecheck` — an unpatched or unconfigured language service leaves tsc green while running zero
+  # Effect rules, so a green typecheck is not evidence that any Effect diagnostic ran.
+  { id = "lint-effect", command = "bun run lint:effect", timeoutMs = 600000 },
+]
+
+triggers = []
+
+# `lint:effect` is deliberately NOT in repoWideGates: that list draws from a closed vocabulary the
+# plane owns, and an id outside it is refused rather than silently ignored. The Effect diagnostics
+# pass reaches the profile through the repo-added `lint-effect` dodGate above, which is what
+# certification actually runs, and through the `lint-effect-diagnostics` command extension.
+repoWideGates = [
+  "tsc",
+  "test:unit:once",
+  "check",
+  "lint:ast",
+  "lint:claude-md",
+  "lint:migrations",
+  "deps:graph:check",
+  "lint:tag-uniqueness",
+  "lint:caddy-cert",
+]
+
+# All six invariant gates are DECLARED. A gate leaves the schedule only through a <repo> waiver,
+# which keeps it declared and carries its reason, so the five this repo cannot run are visible
+# below rather than silently absent. `guard-suite` is armed and green: scripts/__tests__ holds 155
+# structural tests, including the foreign-test-runner ban and the catalog guard.
+invariantGates = [
+  "coverage:tripwire",
+  "ratchet",
+  "test-ratchets",
+  "contract-pins",
+  "hook-wiring",
+  "guard-suite",
+]
+
+[[waivers]]
+root = "<repo>"
+gate = "lint:migrations"
+reason = """\
+RETIRED PERMANENTLY, not parked. The gate lints database migration files for idempotence. This \
+repo publishes test tooling and holds no database, no migration directory and no SQL of any kind, \
+so there is no unpark condition: a library of test helpers is structurally never a migration \
+target. Declared rather than omitted so the absence is a recorded decision."""
+
+[[waivers]]
+root = "<repo>"
+gate = "deps:graph:check"
+reason = """\
+PARKED. The gate runs `madge --circular` over the source tree to refuse an import cycle. That \
+property is worth holding here — five packages import each other and `fixture-residue` is depended \
+on by `effect-bun-test` — but madge is not a declared dependency of this repo and adding it is a \
+separate decision from assimilation. Unpark condition: add madge and a `deps:graph:check` script; \
+the gate then arms with no other change. Until then the property is held by review alone."""
+
+[[waivers]]
+root = "<repo>"
+gate = "lint:tag-uniqueness"
+reason = """\
+PARKED. The gate asserts every Effect service tag string is unique across the tree, because two \
+services sharing a tag resolve to one another silently. This repo declares few tags, but \
+`@packages/effect-bun-test` ships tags INTO consumer trees, so a collision here is a collision in \
+someone else's process. Unpark condition: port the tag-uniqueness script; it needs no plane binary."""
+
+[[waivers]]
+root = "<repo>"
+gate = "lint:caddy-cert"
+reason = """\
+RETIRED PERMANENTLY, not parked. The gate checks a Caddy TLS certificate configuration. This repo \
+ships npm packages and serves nothing, so it has no deploy surface for the gate to read and no \
+unpark condition exists."""
+
+[[waivers]]
+root = "<repo>"
+gate = "coverage:tripwire"
+reason = """\
+PARKED, not retired. The gate shells out to `ultravisor-dod check`, and this repo does not embed \
+the plane binary: it schedules its Definition of Done through `bun run dod` and through \
+.github/workflows/ci.yml, neither of which loads the toolplane scheduler. Unpark condition: the \
+day .toolplane/bin/ carries a built ultravisor-dod for this repo, this gate arms with no other \
+change."""
+
+[[waivers]]
+root = "<repo>"
+gate = "ratchet"
+reason = """\
+PARKED, not retired, and the distinction matters. The gate needs BOTH the plane binary and a \
+recorded baseline, and this repo has neither. A ratchet's value is bounding a count that is \
+already non-zero; `lint:ast` here is at ZERO error-severity findings over a non-empty input set, \
+so every error rule is effectively ceilinged at zero already and the first added violation fails \
+the gate outright. The warning-severity rules are the ones a ratchet would bound, and they are \
+currently unbounded. Unpark condition: embed the binary and seed `[ratchet] baseline` against a \
+measured scan of THIS tree — never a copy of another repo's."""
+
+[[waivers]]
+root = "<repo>"
+gate = "test-ratchets"
+reason = """\
+RETIRED for now, not parked. The gate runs `bun scripts/check-test-ratchets.ts --report`, a script \
+this repo does not have and has not been asked for. It is declared here so that adding the script \
+arms the gate rather than requiring someone to notice the id was missing."""
+
+[[waivers]]
+root = "<repo>"
+gate = "contract-pins"
+reason = """\
+PARKED. The gate runs `ultravisor ultravisor-assimilate --pins`, which needs the plane binary. The \
+same comparison is available today by running the assimilator from the plane checkout against this \
+repo root, and the recorded pins in .toolplane/pins.toml were generated that way. Unpark \
+condition: the binary lands in .toolplane/bin/."""
+
+[[waivers]]
+root = "<repo>"
+gate = "hook-wiring"
+reason = """\
+RETIRED for now, not parked. The gate runs `bun scripts/check-hook-wiring.ts`, which this repo \
+does not have. The property it checks — that every hook on disk is registered in \
+.claude/settings.json — is currently held by the assimilator's hook probe at certification and by \
+review, which is weaker because neither runs at commit. Adding the script arms the gate with no \
+other change."""

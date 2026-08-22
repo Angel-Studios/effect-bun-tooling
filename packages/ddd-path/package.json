@@ -1,0 +1,58 @@
+{
+  "name": "@packages/ddd-path",
+  "version": "0.4.1",
+  "description": "The DDD path grammar: bounded context, language root and test trees derived from file paths alone, across six languages, with partial adoption and no flag day",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Angel-Studios/effect-bun-tooling.git",
+    "directory": "packages/ddd-path"
+  },
+  "homepage": "https://github.com/Angel-Studios/effect-bun-tooling/tree/main/packages/ddd-path",
+  "type": "module",
+  "exports": {
+    "./grammar": {
+      "types": "./dist/grammar.d.ts",
+      "default": "./dist/grammar.js"
+    },
+    "./tags": {
+      "types": "./dist/tags.d.ts",
+      "default": "./dist/tags.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "default": "./dist/config.js"
+    },
+    "./parse": {
+      "types": "./dist/parse.d.ts",
+      "default": "./dist/parse.js"
+    },
+    "./marking": {
+      "types": "./dist/marking.d.ts",
+      "default": "./dist/marking.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "bun": ">=1.3.12"
+  },
+  "scripts": {
+    "tsc": "tsc --noEmit",
+    "build:types": "tsc --project tsconfig.build.json",
+    "lint:effect": "effect-tsgo diagnostics --project tsconfig.json",
+    "check": "biome check src/ __tests__/",
+    "test:unit:once": "bun test --coverage"
+  },
+  "peerDependencies": {
+    "effect": ">=4.0.0-rc.109 <5"
+  },
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "effect": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -1,0 +1,75 @@
+id: no-run-sync-in-library
+language: TypeScript
+severity: error
+message: "Effect.run* escapes the Effect runtime. Only use at program entry points, at a declared foreign-API boundary, or in tests."
+note: |
+  Every `Effect.run*` breaks out of the Effect runtime. Library code should return
+  Effects for the caller to run, so the caller keeps the typed error channel and the
+  ability to compose.
+
+  MATCH THE FAMILY, NOT THREE NAMES. Enumerating `runSync`, `runPromise` and `runFork`
+  leaves the `Exit`-returning siblings — `runSyncExit`, `runPromiseExit` — invisible,
+  and they leave the runtime identically; they differ only in returning an `Exit`
+  rather than throwing. The body matches `kind: call_expression` on the CALLEE TEXT,
+  so it covers the whole family and is independent of TYPE ARGUMENTS. That last part
+  is load-bearing: an ast-grep `pattern:` does not match a call carrying type
+  arguments, so a pattern-based version is blind to `Effect.runSync<A, E>(x)`.
+  `run[A-Z][A-Za-z]*` also spans v4's context-taking runners (`runPromiseWith`,
+  `runSyncExitWith`, …); the curried `Effect.runPromiseWith(services)(effect)` matches
+  on the INNER call, whose callee text is the runner name. `Effect.runtime` is
+  excluded by the required capital letter after `run`.
+
+  WHY THIS REPO CARRIES A BOUNDARY CARVE-OUT THAT A PRODUCT REPO WOULD NOT. These
+  packages ARE the seam between Effect and a foreign callback API — bun:test's
+  `it(name, cb)`, a `Bun.plugin` loader hook, SvelteKit's `$app/navigation` contract.
+  At that seam there is no caller above to hand an Effect to: the foreign API demands
+  a `void` or a `Promise`, and something has to run the Effect into one. That is the
+  same reason the rule already exempts `**/main.ts`, and refusing to name it here
+  would mean either a permanently red gate or laundering correct code into an
+  `index.ts`. Each carve-out below is a FILE, not a glob over a directory, so a new
+  run site anywhere else in these packages is still caught.
+
+  WHAT WOULD MAKE A CARVE-OUT WRONG. If one of these files stops being a foreign-API
+  adapter and becomes ordinary library code, its exemption outlives its reason and
+  should be deleted rather than widened. Adding a file to this list to silence a
+  finding in code that has a caller above it is laundering and is banned.
+metadata:
+  enforces: "Every Effect.run* — including the Exit-returning and context-taking forms — appears only at a program entry point, at a named foreign-API boundary, or in tests; library code returns Effects for the caller to run"
+  origin: "ported from the ultravisor ts-effect stack pack (lintFragment no-run-sync-in-library) during assimilation"
+rule:
+  kind: call_expression
+  has:
+    field: function
+    regex: "^(await\\s+)?Effect\\s*\\.\\s*run[A-Z][A-Za-z]*$"
+files:
+  - "packages/**/*.ts"
+  - "scripts/**/*.ts"
+  - "tools/**/*.ts"
+ignores:
+  - "**/__test__/**"
+  - "**/__tests__/**"
+  - "**/__e2e__/**"
+  - "**/*.test.ts"
+  - "**/*.e2e.test.ts"
+  - "**/*.itest.ts"
+  - "**/main.ts"
+  - "**/index.ts"
+  - "**/bootstrap.ts"
+  # bun:test seam. `runPromise` here is the harness itself turning a user's Effect into
+  # the Promise bun:test awaits — the single point where every it.effect/it.scoped test
+  # body leaves the Effect world. This IS the entry point for a test process.
+  - "packages/effect-bun-test/src/internal/internal.ts"
+  # `Command` builds a scripted subprocess for tests; the run site is its sync
+  # teardown path, which the harness must complete before bun tears the process down.
+  - "packages/effect-bun-test/src/command.ts"
+  # Effect-side helper invoked from bun's own lifecycle callbacks, which are `void`.
+  - "packages/effect-bun-test/src/utils.ts"
+  # Bun.plugin registration + the module-scope preload. `Bun.plugin` and a preload file
+  # are both foreign entry points: bun calls them, nothing calls them.
+  - "packages/bun-svelte-test/src/register.ts"
+  - "packages/bun-svelte-test/src/plugin.ts"
+  # SvelteKit `$app/navigation` / `$app/state` doubles. The real modules return bare
+  # Promises, so a double that returned an Effect would not satisfy the contract the
+  # component under test imports.
+  - "packages/bun-svelte-test/src/app-doubles/navigation.ts"
+  - "packages/bun-svelte-test/src/app-doubles/state.ts"

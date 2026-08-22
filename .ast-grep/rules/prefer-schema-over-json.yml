@@ -1,0 +1,144 @@
+id: prefer-schema-over-json
+language: TypeScript
+severity: warning
+message: "Prefer Schema over raw JSON at this persistence/wire/decode site. Use Schema.encode/decode(Schema.parseJson(TSchema)) so the shape is validated and errors land in the typed channel. Test, log, HTML-injection, and .slice-truncation uses are exempt."
+note: |
+  Replaces the Effect-LSP rule `preferSchemaOverJson` (code 44), which flagged
+  EVERY JSON.parse/JSON.stringify in an Effect context and had an irreducible
+  ~30-35% false-positive core (test assertions, deliberately-malformed fixtures,
+  prod log/error/SSE/HTML serialization) with no honest fix under the
+  no-suppression / no-cast policy. This rule keeps the genuine value by matching
+  only TARGETED persistence/wire/decode signatures, and carries the debug/test
+  provisions the LSP rule lacked.
+
+  FLAG (fires): the honest fix in each case is a real Schema round-trip.
+    B  JSON.stringify(x) inside a SQL template that casts `::jsonb`/`::json`
+       -> Schema.encode(Schema.parseJson(TSchema))(x)
+    C  JSON.parse(x) inside Effect.try(...)   (arrow or { try, catch } form)
+       -> Schema.decode(Schema.parseJson(TSchema))(x)
+       CAVEAT (behavior-tightening): the honest fix also REMOVES the co-located
+       `as T` cast, and a validating decode REJECTS where the cast TRUSTED — model
+       the shape faithfully or a real-but-unmodeled payload (e.g. ffprobe output)
+       will start failing. This is a behavior change, not an in-place swap.
+    D  bare JSON.parse(x) directly in an Effect.gen body (throws as an untyped
+       defect INTO the fiber when unguarded; a native try/catch around it is
+       already handled but still reads cleaner as a Schema decode)
+       -> Schema.decode with typed error handling
+    E  JSON.stringify(x) as a `body:` value (outbound HTTP / RPC request)
+       -> encode the request with Schema before send
+
+  EXEMPT (the operator-required provision for valid test/debug):
+    - test globs (see `ignores`);
+    - argument to console.* / Console.* / Effect.log* / Effect.annotateLogs;
+    - a `.slice(...)` on the JSON.stringify result (error-string truncation);
+    - HTML / plain template-literal injection (no `::jsonb` signal, so Class B
+      never fires) and SSE `event.data` dumps (bare stringify, no targeted class);
+    these last two are exempt BY CONSTRUCTION — the targeted classes never match
+    them — which is why this rule cannot re-open the false-positive wall.
+
+  ## sql-template FLAG vs html-template EXEMPT (the collision)
+  Class B discriminates a SQL persistence template from an HTML/plain template by
+  the `::jsonb`/`::json` CAST in the template text, NOT by the tag. This is
+  deliberate and stronger than tag-matching: the dominant repo write idiom
+  `sql<RowType>`...`` parses under tree-sitter as a `binary_expression`
+  (the `sql < Row > ...` generic-vs-comparison ambiguity), so a tag-ancestor walk
+  is structurally blind to ~323 generic-tag sites. Matching the `template_string`
+  node directly + a `::jsonb` content regex catches BOTH `sql`` and `sql<Row>``
+  writes, while an HTML dump (`<script>...${JSON.stringify(x)}</script>`) carries
+  no `::jsonb` and is silent.
+
+  ## Known false-negatives (accepted; precision on the exempt side is paramount):
+    - Cast-less JSON-into-SQL (`VALUES (${JSON.stringify(x)})` with no `::jsonb`)
+      and JSON into a non-jsonb column.
+    - Generic-tag SELECTs that stringify without a `::jsonb` cast.
+    - `Effect.tryPromise(() => JSON.parse(...))` (only `Effect.try` is matched).
+    - JSON.parse in a plain (non-generator) function outside Effect.try.
+    - Class E matches only an INLINE `body: JSON.stringify(x)` pair — the
+      assign-then-send form (`const b = JSON.stringify(x); fetch(url, {body: b})`)
+      and the Effect wire idiom (`HttpClientRequest.bodyText(JSON.stringify(x))`)
+      are NOT matched.
+  Class D overlaps `no-unsafe-json-parse.yml` (which stays at `error` and owns the
+  defect angle); this rule adds the encode/decode/wire classes and the debug
+  provisions. Double-reporting on bare-parse-in-gen is expected.
+
+  ## Harden path
+  This is `warning` (advisory) ON PURPOSE: it fires on 154 genuine but not-yet-
+  remediated PROD sites (measured on this tree; 288 total, 134 test-path sites
+  suppressed by `ignores`), so it must NOT red the repo-wide `pnpm lint:ast`
+  (`ast-grep scan`) DoD gate — verified: `ast-grep scan` 0.42.2 exits 0 on
+  `warning`, non-zero only on `error`. After the genuine sites are burned down to
+  a Schema round-trip, promote `severity: warning` -> `error` (as
+  `no-tagged-error-yieldable-shadow` did once its class was clean) so any new
+  reintroduction fails CI.
+
+  HARDEN-PATH PRECISION DEBT — must be resolved BEFORE warning->error (tracked in
+  plan-DB roadmap/effect-lsp `fluid:psoj-harden-followups`): Class E's over-broad
+  `body:` key (fires on non-wire email/queue bodies) + the custom-logger debug-
+  exempt gap; Class E's false-negatives + the 27/31-frontend scope question; and
+  the Class D vs `no-unsafe-json-parse` exempt-vs-defect overlap. As an advisory
+  `warning` these are latent (0 real false-flags on today's tree); at `error` they
+  would red non-wire sites and double-own the bare-parse-in-gen domain.
+metadata:
+  enforces: "Persistence/wire/decode sites round-trip through Schema.parseJson, not raw JSON.parse/stringify"
+  origin: "effect-lsp ratchet (retired 2026-07-21, plan-DB roadmap/effect-lsp); preferSchemaOverJson replacement (#1718)"
+rule:
+  all:
+    - any:
+        - all:
+            - pattern: JSON.stringify($$$ARGS)
+            - inside:
+                kind: template_string
+                stopBy: end
+                regex: '(?i)::jsonb?\b'
+        - all:
+            - pattern: JSON.parse($$$ARGS)
+            - inside:
+                pattern: Effect.try($$$TRY)
+                stopBy: end
+        - all:
+            - pattern: JSON.parse($$$ARGS)
+            - inside:
+                kind: generator_function
+                stopBy: end
+            - not:
+                inside:
+                  pattern: Effect.try($$$WRAP)
+                  stopBy:
+                    kind: generator_function
+        - all:
+            - pattern: JSON.stringify($$$ARGS)
+            - inside:
+                kind: pair
+                has:
+                  field: key
+                  regex: '^body$'
+    - not:
+        any:
+          - inside:
+              kind: call_expression
+              stopBy: end
+              has:
+                field: function
+                regex: '^(console\.|Console\.|Effect\.log|Effect\.annotateLogs)'
+          - inside:
+              kind: member_expression
+              has:
+                field: property
+                regex: '^slice$'
+# Retargeted to THIS repo's source roots during assimilation. The ported globs named
+# `apps/**`, which does not exist here: a rule scoped only to it scanned ZERO files while
+# still appearing in the corpus, which reads exactly like a rule with nothing to report.
+files:
+  - "packages/**/*.ts"
+  - "scripts/**/*.ts"
+  - "tools/**/*.ts"
+  - "__e2e__/**/*.ts"
+ignores:
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+  - "**/*.spec.tsx"
+  - "**/__tests__/**"
+  - "**/__test__/**"
+  - "**/test/**"
+  - "**/fixtures/**"

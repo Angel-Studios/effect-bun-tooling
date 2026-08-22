@@ -1,0 +1,76 @@
+id: no-cluster-fork-daemon
+language: TypeScript
+severity: warning
+message: "Layer.scopedDiscard/effectDiscard + Effect.forkScoped + Schedule is a per-NODE daemon: it runs on every cluster node, doing N x the work and racing writes. Cluster-wide daemons use Singleton.make({ shardGroup })."
+note: |
+  `Layer.scopedDiscard` runs on every Layer construction — i.e. every cluster
+  node. A scheduled loop forked there (`Effect.forkScoped(loop.pipe(Effect.repeat(
+  Schedule.spaced(...))))`) therefore executes once PER NODE per interval. A
+  3-node cluster runs the same sweep three times; the DB UNIQUE constraint papers
+  over the duplicate writes while the wasted concurrency slots and racing SSE
+  fan-out stay invisible.
+
+  BILINGUAL ANCHOR (v3 + v4). The anchor matches BOTH `Layer.scopedDiscard` and
+  `Layer.effectDiscard`, because Effect v4 deletes `Layer.scoped`/`scopedDiscard`
+  outright — verified against the `effect@4.0.0-rc.108` tarball: zero
+  `declare const scopedDiscard` in `dist/Layer.d.ts`, while `effectDiscard` is
+  declared at `Layer.d.ts:1279` and returns `Layer<never, E, Exclude<R, Scope>>`,
+  i.e. it absorbed the scoped semantics. A v3-only anchor would therefore match
+  NOTHING after the v4 rewrite: this rule's count would fall 4 -> 0, the ratchet
+  would print `TIGHTENED` and exit 0, and the mechanical half of CLAUDE.md's
+  cluster-singleton invariant would be dead with no signal. Both spellings are
+  kept, not swapped, so the guard stays live on a half-migrated tree.
+  Do NOT delete the `scopedDiscard` arm to "clean up" after the flip; it costs
+  nothing and it is what catches a file the codemod skipped.
+
+  Fix (exactly-once-per-cluster work, e.g. sweepers):
+    Singleton.make(name, body, { shardGroup })  -- register shardGroup in
+    XAVIER_SHARD_GROUPS at apps/xavier/src/common/workflows/cluster-layer.ts.
+    Template: apps/xavier/src/zendesk/verification/tier2/artifact-janitor.live.ts
+
+  Fix (at-least-once with idempotent handler, e.g. some subscribers): keep
+  Effect.forkScoped but document the choice inline with an ADR comment
+  (`// ADR: subscriber-idempotent` or `// ADR: subscriber-cursor`) per
+  design-principles.md Principle 4. The rule's intent is "no SILENT occurrence".
+
+  See roadmap/type-safety-hardening/design-principles.md Principle 4 and
+  apps/xavier/src/device-lab/CLAUDE.md.
+
+  STAGED ENFORCEMENT: severity is `warning`. Phase 1.4a of the roadmap converts
+  the three zendesk sweepers this rule flags (clustering/cooldown-sweeper,
+  metrics/retention-sweeper, repos/sweeper). The remaining matches outside the
+  zendesk scope (apps/adb-mirror standalone server, common/stale-run-sweeper,
+  common/slack-webhooks/retention, streams/cerebro-adapter/crash-cleanup-subscriber)
+  are out of the roadmap's Theme 4 scope and need individual triage before this
+  flips to `error`.
+metadata:
+  enforces: "Cluster-wide daemons use Singleton.make with a shardGroup, never a per-node Layer.scopedDiscard/effectDiscard + forkScoped schedule loop"
+  origin: "type-safety-hardening roadmap Phase 0 (#545); apps/xavier/src/device-lab/CLAUDE.md"
+rule:
+  all:
+    # v3 spelling AND its v4 successor — see BILINGUAL ANCHOR in the note.
+    - any:
+        - pattern: Layer.scopedDiscard($$$BODY)
+        - pattern: Layer.effectDiscard($$$BODY)
+    - has:
+        pattern: Effect.forkScoped($$$FORK)
+        stopBy: end
+    - has:
+        any:
+          - pattern: Schedule.spaced($$$S)
+          - pattern: Schedule.fixed($$$S)
+          - pattern: Schedule.exponential($$$S)
+          - pattern: Schedule.$METHOD($$$S)
+        stopBy: end
+# Retargeted to THIS repo's source roots during assimilation. The ported globs named
+# `apps/**`, which does not exist here: a rule scoped only to it scanned ZERO files while
+# still appearing in the corpus, which reads exactly like a rule with nothing to report.
+files:
+  - "packages/**/*.ts"
+  - "scripts/**/*.ts"
+  - "tools/**/*.ts"
+  - "__e2e__/**/*.ts"
+ignores:
+  - "**/__test__/**"
+  - "**/__tests__/**"
+  - "**/*.test.ts"

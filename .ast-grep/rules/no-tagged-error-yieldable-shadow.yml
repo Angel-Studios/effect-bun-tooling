@@ -1,0 +1,129 @@
+id: no-tagged-error-yieldable-shadow
+language: TypeScript
+severity: error
+message: "This TaggedError field name shadows Effect's yieldable prototype surface. Under v3 a bare `yield* err` dies at runtime with e.g. `op.commit is not a function`; under v4 the live members are `pipe`/`toJSON`/`toString` (Pipeable + Inspectable), while `commit`/`_op` are v3-only residue kept for a half-migrated tree. Rename the domain field."
+note: |
+  `Data.TaggedError(...)` and `Schema.TaggedError<Self>()(...)` produce classes
+  whose instances implement Effect's yieldable protocol via PROTOTYPE members.
+  Declaring an own instance field with one of those names shadows the prototype
+  member: the instance property wins on lookup, so `yield* new MyError({ commit })`
+  dispatches to the string field instead of the method and the fiber dies with
+  `op.commit is not a function` — an untyped defect that bypasses the typed error
+  channel entirely.
+
+  WHICH NAMES ARE LIVE DEPENDS ON THE MAJOR, AND THE BANNED SET IS BILINGUAL.
+  Under v3 the protocol is `commit()` (the yieldable entry point), `pipe()`,
+  `toJSON()`, `toString()` and the internal `_op` marker — the crash sentence in
+  this rule's `message` is the v3 one. Under v4 `dist/Cause.d.ts:1221` declares
+  `YieldableError extends Error, Pipeable, Inspectable` with only
+  `[Effect.TypeId]` and `[Symbol.iterator]` of its own, so the live string-keyed
+  surface is `pipe` / `toJSON` / `toString`; v4 yields through `Symbol.iterator`
+  rather than a `commit()` call, `commit` has ZERO member declarations anywhere in
+  `dist/*.d.ts`, and `_op` survives only on `Option` and `Result`, never on an error.
+
+  SO `commit` AND `_op` ARE V3 RESIDUE, RETAINED DELIBERATELY, AND THE RETENTION HAS
+  A COST WORTH NAMING. They are kept because the tree is still overwhelmingly
+  v3-spelled and a shadowed `commit` on any not-yet-migrated file is a live runtime
+  crash — dropping the arm to tidy up after the flip is exactly the swap this
+  codebase's bilingual-anchor discipline forbids. The cost is that on a FULLY
+  migrated file a `commit` field is harmless in v4, so a match there is a FALSE
+  POSITIVE at `error` severity, and this is a git/worktree orchestration domain
+  where `commit` is the most natural field name there is. If that fires on code you
+  have confirmed is v4-only, the correct response is a scoped
+  `// ast-grep-ignore: no-tagged-error-yieldable-shadow` with a reason, or retiring
+  the two residue names once the migration is complete and no v3 spelling remains
+  anywhere in the tree — NOT deleting the arm while v3 files still exist.
+
+  KNOWN GAP, PRE-EXISTING AND UNCHANGED BY v4: `name`, `message` and `stack` are
+  real `Error` members in BOTH majors and are NOT in the banned set, so shadowing
+  one is invisible to this rule. That is standing debt rather than a migration
+  finding; widening the set would change counts and belongs in its own change.
+
+  This bit the repo once (RowCountGuardError.commit) and was caught only by a
+  CI test-db lane, not by tsc. See plan-DB roadmap/effect-lsp finding:w7-003 and
+  auto-memory feedback_no_throws_inside_effect_gen for the failure signature.
+
+  Fix: rename the domain field so it does not collide with the protocol —
+  `commit` -> `commitSha` / `commitHash`, `pipe` -> `pipeline`, etc. The banned
+  names are: commit, pipe, toJSON, toString, _op.
+
+  This is an `error` (not a staged `warning`): the repo is already clean, so any
+  match is a NEW reintroduction of a known runtime crash, not remediation debt.
+
+  V4 RE-DERIVATION of the banned-name set (effect@4.0.0-rc.108 tarball). The set
+  above is v3's yieldable surface; it was re-derived against v4 and is a valid
+  SUPERSET there, so the rule needs no pattern change at the flip. Chain:
+  `Data.TaggedError` -> `internal/core.js` `TaggedError` -> `Error` ->
+  `YieldableError`, whose prototype is `makePrimitiveProto(...)` = `EffectProto`
+  = `PipeInspectableProto` + `[Symbol.iterator]` + `toJSON`. So the v4 instance
+  protocol is `pipe`, `toJSON`, `toString`, `[Symbol.iterator]`, plus symbol-keyed
+  internals — all three of the surviving banned names still shadow a real method.
+  `Data.TaggedError` and `Schema.TaggedError` both keep their names in v4
+  (v4 `Data.d.ts:966`), so the two `extends_clause` anchors are unaffected.
+  Two of the five names become RESIDUE in v4 and are kept deliberately:
+  `commit` (v4 replaces the v3 `commit()` yieldable entry point with
+  `[Symbol.iterator]`) and `_op` (v4 keys the op off a symbol, not a `_op` string
+  field). Both still shadow on any not-yet-migrated file, and neither can produce
+  a false positive worth the coverage loss. Nothing NEW needs banning: v4 adds no
+  string-keyed prototype method the v3 set does not already cover.
+  (`YieldableError` explicitly `delete`s `toString` from the proto, falling back
+  to native `Error.prototype.toString` — still a method, so banning `toString`
+  stays correct.)
+metadata:
+  enforces: "TaggedError fields never shadow the yieldable prototype protocol (commit/pipe/toJSON/toString/_op)"
+  origin: "effect-lsp ratchet (retired 2026-07-21, plan-DB roadmap/effect-lsp); finding w7-003 (#1596)"
+rule:
+  any:
+    # Data.TaggedError("Name")<{ ... readonly <banned>: ... }>
+    # The field is a property_signature that is a DIRECT member of the type-parameter
+    # object_type (default `neighbor` stopBy on each `inside` keeps it top-level, so a
+    # banned name nested inside a sub-struct field type does NOT match).
+    - all:
+        - kind: property_signature
+        - has:
+            field: name
+            regex: '^(commit|pipe|toJSON|toString|_op)$'
+        - inside:
+            kind: object_type
+            inside:
+              kind: type_arguments
+              inside:
+                kind: extends_clause
+                has:
+                  pattern: Data.TaggedError
+                  stopBy: end
+    # Schema.TaggedError<Self>()("Name", { <banned>: ... })
+    # The field is a pair that is a DIRECT member of the fields object literal passed to
+    # the constructor. Anchoring the object -> arguments -> call_expression -> extends_clause
+    # keeps a banned name nested in a Schema.Struct(...) field value from matching.
+    - all:
+        - kind: pair
+        - has:
+            field: key
+            regex: '^(commit|pipe|toJSON|toString|_op)$'
+        - inside:
+            kind: object
+            inside:
+              kind: arguments
+              inside:
+                kind: call_expression
+                inside:
+                  kind: extends_clause
+                  has:
+                    pattern: Schema.TaggedError
+                    stopBy: end
+# Retargeted to THIS repo's source roots during assimilation. The ported globs named
+# `apps/**`, which does not exist here: a rule scoped only to it scanned ZERO files while
+# still appearing in the corpus, which reads exactly like a rule with nothing to report.
+files:
+  - "packages/**/*.ts"
+  - "scripts/**/*.ts"
+  - "tools/**/*.ts"
+  - "__e2e__/**/*.ts"
+ignores:
+  - "**/__test__/**"
+  - "**/__tests__/**"
+  - "**/*.test.ts"
+  - "**/*.itest.ts"
+  - "**/*.test.tsx"
+  - "**/*.itest.tsx"

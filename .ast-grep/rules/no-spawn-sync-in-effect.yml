@@ -1,0 +1,31 @@
+id: no-spawn-sync-in-effect
+language: TypeScript
+severity: error
+message: "Bun.spawnSync blocks the fiber pool inside Effect generators. Use Effect.tryPromise with Bun.spawn instead."
+note: |
+  Bun.spawnSync is synchronous and blocks the entire thread. Inside an Effect.gen
+  generator, this bypasses Effect's concurrency model and can starve other fibers.
+  Wrap the async Bun.spawn in Effect.tryPromise instead.
+metadata:
+  enforces: "No Bun.spawnSync inside Effect generators; bridge the async Bun.spawn via Effect.tryPromise"
+  origin: "pre-ledger (backfilled C1)"
+rule:
+  pattern: Bun.spawnSync($$$ARGS)
+  inside:
+    kind: generator_function
+    stopBy: end
+# Retargeted to THIS repo's source roots during assimilation. The ported globs named
+# `apps/**`, which does not exist here: a rule scoped only to it scanned ZERO files while
+# still appearing in the corpus, which reads exactly like a rule with nothing to report.
+files:
+  - "packages/**/*.ts"
+  - "scripts/**/*.ts"
+  - "tools/**/*.ts"
+  - "__e2e__/**/*.ts"
+ignores:
+  - "**/__test__/**"
+  - "**/__tests__/**"
+  - "**/*.test.ts"
+  - "**/*.itest.ts"
+  - "**/scripts/**"
+  - "**/bootstrap.ts"

@@ -30,6 +30,17 @@ jobs:
       - name: test
         run: bun run test:unit:once
 
+      - name: effect diagnostics
+        run: bun run lint:effect
+
+      - name: ast-grep
+        run: bun run lint:ast
+
+      # Refuses an EMPTY scan set with exit 3 rather than reporting a pass, so a walker that
+      # silently stopped finding files is never green here.
+      - name: claude-md lint
+        run: bun run lint:claude-md
+
       - name: biome
         run: bun run check:ci
 

@@ -1,0 +1,7 @@
+// biome-ignore lint/suspicious/noExplicitAny: this fixture pins the preamble rule
+/* ---uv
+l = "infrastructure"
+owner = "platform_tooling"
+--- */
+
+export const value = 1;

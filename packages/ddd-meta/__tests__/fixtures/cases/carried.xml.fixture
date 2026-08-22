@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- ---uv
+l = "presentation"
+owner = "roku_navigation"
+tags = ["modal", "roku"]
+--- -->
+
+<component name="LoginModal" extends="BaseScreen">
+  <interface />
+</component>

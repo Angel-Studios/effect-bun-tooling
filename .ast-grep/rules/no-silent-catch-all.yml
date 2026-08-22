@@ -1,0 +1,112 @@
+id: no-silent-catch-all
+language: TypeScript
+severity: error
+message: "Effect.catchAll/catchAllCause/catchAllDefect (v4: catch/catchCause/catchDefect) silently swallows the failure. Log before recovering or use a more specific handler."
+note: |
+  catchAll / catchAllCause with an ignored error/cause parameter discards
+  error information. Always log the error before recovering, or use
+  Effect.catchTag to handle specific error types. Use a named param —
+  `(err) => ...` or `(cause) => ...` — to silence the rule alongside an
+  explicit log call. If this is intentional (e.g., cleanup finalizer),
+  add: // ast-grep-ignore: no-silent-catch-all
+
+  `catchAllDefect` IS IN SCOPE AND IS THE MORE SERIOUS CASE. A defect is a
+  bug, not a modelled failure, so a zero-arg `Effect.catchAllDefect(() => ...)`
+  discards strictly more information than the `catchAll` form this rule was
+  written for. The rule enumerated two names and therefore could not see the
+  third: in the plane repo that hid 11 live sites, nine of them in the
+  node-agent's tmux and follow-file adapters, while the rule reported a clean
+  zero. A list of names is defeated by the name next to it — when a fourth
+  swallowing combinator appears, add it here rather than assuming the list
+  is closed.
+
+  TWO FURTHER SPELLINGS, BOTH FOUND ONLY BY ATTACKING THE FIX. The first
+  widening was still three `pattern:` entries of the PIPEABLE form
+  `Effect.catchAll(() => $BODY)`, which is blind to the DATA-FIRST form
+  `Effect.catchAll(self, () => ...)` — and there was a live site of exactly that,
+  `packages/toolplane/src/resident/graph-host.ts:347`. It was also silenced by an
+  UNDERSCORE-NAMED parameter, `(_) => ...`, which discards the error just as
+  completely as `() => ...` while satisfying a rule that only looks for an empty
+  parameter list. Matching `kind: call_expression` on the callee text plus an
+  argument that is an arrow with an empty-or-underscore parameter closes both:
+  the callee test is position-independent, so data-first and pipeable are the
+  same match, and `_`, `__` and `(_)` are refused alongside `()`. A named
+  parameter that is actually USED remains the way to satisfy this rule.
+
+  BILINGUAL CALLEE REGEX (v3 + v4). Effect v4 renames all three combinators by
+  dropping the `All` infix: `catchAll` -> `catch`, `catchAllCause` ->
+  `catchCause`, `catchAllDefect` -> `catchDefect`. Both v3 and v4 spellings are
+  matched, not swapped, so the guard keeps working on v3, on v4, and on a
+  half-migrated tree. Do NOT delete the `All` arm to tidy up after the flip.
+
+  V4 ADDITIONS, NOT JUST RENAMES — THE ARM THAT ALMOST STAYED OPEN. Making the anchor
+  bilingual for the `All`-infix rename closed the rename and left a WIDER hole behind it.
+  `grep -oE 'declare const catch[A-Za-z]*' dist/Effect.d.ts` on effect@4.0.0-rc.110 yields
+  THIRTEEN combinators: catch, catchCause, catchCauseFilter, catchCauseIf, catchDefect,
+  catchEager, catchFilter, catchIf, catchNoSuchElement, catchReason, catchReasons,
+  catchTag, catchTags. The old `catch(All)?(Cause|Defect)?` alternation could match only
+  six of them. Probe: a file carrying nine spellings, EVERY one with a discarding
+  `(_) => Effect.succeed(0)` handler, produced exactly TWO matches. Seven silent swallows
+  walked past an error-severity guard.
+
+  `Effect.catchEager` is the one that matters most: it is v4's already-resolved fast path,
+  so `Effect.catchEager((_) => Effect.succeed(0))` IS the discard-the-error-return-a-default
+  shape this rule exists to refuse. `catchFilter`/`catchIf` are subtler and worse in review —
+  a predicate in front of a `(_)` handler reads deliberate while discarding just as much.
+
+  This is NOT a falling-count blind. The rule is unrecorded in `scripts/ratchet-baseline.json`
+  and therefore ceilinged at zero, so it sits at 0 whether it is armed or dead: a migration
+  that hands authors eight new spellings the guard cannot see produces no TIGHTENED, no rise,
+  and no signal of any kind. A list of names is defeated by the name next to it — that lesson
+  was already written above for `catchAllDefect`, and v4 taught it again at eight times the
+  scale. When a fourteenth combinator appears, add it here.
+
+  `catchTag` and `catchTags` are DELIBERATELY EXCLUDED, and that is a narrowing judgement
+  rather than an oversight: the tag argument already names the specific error being handled,
+  so a `(_)` parameter there discards a failure the author has demonstrably identified. That
+  is the same reasoning by which `Effect.catchTag` is offered as this rule's FIX above.
+  `Some` is the v3 spelling of what v4 calls `Filter`; both are listed, not swapped.
+
+  This is an `error`-severity guard for the never-swallow-errors invariant, and
+  an `error` guard that matches nothing is indistinguishable from a clean tree:
+  the count falls to 0, the ratchet prints TIGHTENED, and it exits 0. On a v4
+  migration branch a FALLING count is the suspicious direction. The same death
+  would silently dangle every `// ast-grep-ignore: no-silent-catch-all` sitting
+  on a renamed call, turning ast-grep's built-in `unused-suppression` into the
+  detector; never delete a dangling suppression to make that ratchet green,
+  because that deletes the evidence rather than the debt.
+metadata:
+  enforces: "Effect.catchAll/catchAllCause/catchAllDefect (v4 catch/catchCause/catchDefect) never silently discards the failure; log before recovering or handle specific tags"
+  origin: "pre-ledger (backfilled C1); catchAllDefect arm added in the ultravisor extraction (P2); made bilingual for effect v4 (#2219)"
+rule:
+  kind: call_expression
+  all:
+    - has:
+        field: function
+        regex: "^(await\\s+)?Effect\\s*\\.\\s*catch(All|AllCause|AllDefect|Some|Cause|Defect|Eager|Filter|If|CauseFilter|CauseIf|Reason|Reasons|NoSuchElement)?$"
+    - has:
+        field: arguments
+        has:
+          kind: arrow_function
+          any:
+            - has:
+                field: parameters
+                regex: "^\\(\\s*_*\\s*\\)$"
+            - has:
+                field: parameter
+                regex: "^_+$"
+# Retargeted to THIS repo's source roots during assimilation. The ported globs named
+# `apps/**`, which does not exist here: a rule scoped only to it scanned ZERO files while
+# still appearing in the corpus, which reads exactly like a rule with nothing to report.
+files:
+  - "packages/**/*.ts"
+  - "scripts/**/*.ts"
+  - "tools/**/*.ts"
+  - "__e2e__/**/*.ts"
+ignores:
+  - "**/__test__/**"
+  - "**/__tests__/**"
+  - "**/*.test.ts"
+  - "**/*.itest.ts"
+  - "**/*.test.tsx"
+  - "**/*.itest.tsx"

@@ -1,0 +1,61 @@
+id: no-literal-nul-byte
+language: TypeScript
+severity: error
+message: "This file contains a literal NUL (0x00) byte. Write it as the six-character escape (backslash-u-0-0-0-0) instead: identical string value at runtime, but the file stays TEXT. A literal NUL makes the whole file BINARY to text tooling — the shell `grep` here is a ugrep wrapper with `-I`, which SKIPS such a file entirely and exits 1, indistinguishable from a genuine no-match, and `file(1)` reports `data`. Every population count taken with a shell grep silently excludes it."
+note: |
+  HV-700. Measured at 4d31e3857: 17 tracked .ts files carried 27 literal NUL
+  bytes, and every one of them was invisible to shell grep.
+
+  HOW IT WAS FOUND. `grep` for the string `git` in
+  apps/daemon/src/mcp/chores/ancestry-port.ts returned NO MATCH,
+  twice, while a JS-based detector reading the same file with
+  `readFileSync(..., 'utf8')` correctly reported `spawn:git`. That file plainly
+  contains an `execFileSync('git', ...)` call. The contradiction was the tell:
+  a guard that greps is blind exactly where a guard that parses is not.
+
+  THE NULS WERE INTENTIONAL, AND STILL ARE. Almost every instance is a field
+  SEPARATOR inside a template literal, joining two components that cannot
+  themselves contain a NUL, so the joined key cannot collide. A few are
+  deliberate control-character TEST MATERIAL for the log-capture laundering
+  fix. None of that semantics changes here: the escape cooks to the SAME BYTE
+  at runtime. Only the on-disk representation moves from a raw 0x00 to a
+  six-character escape, which is what restores grep visibility.
+
+  Behavioural equivalence was proven mechanically, not by inspection: for all
+  17 files the TypeScript AST node-kind sequence is identical before and after,
+  every StringLiteral / NoSubstitutionTemplateLiteral / TemplateHead / Middle /
+  Tail COOKED value (`node.text`, escapes resolved) is identical, and parse
+  diagnostics are unchanged. The check was negative-controlled: perturbing one
+  escape by a single codepoint made it report a changed cooked value and exit
+  non-zero.
+
+  WHY `kind: program` RATHER THAN `kind: string` / `kind: template_string`.
+  ast-grep does not traverse comment nodes, so a `kind: comment` rule matches
+  NOTHING — measured, not assumed. Three of the 27 instances lived in comments.
+  Matching the ROOT node tests the whole file text in one shot, which is the
+  only form covering strings, templates, line comments, JSDoc and block
+  comments alike. Verified against five planted probes (block comment, JSDoc,
+  line comment, string, template) plus a clean negative control that stayed
+  silent.
+
+  SCOPE. `lint:ast` is repo-wide and blocking on BOTH surfaces — the pre-commit
+  DoD gate and CI (.github/workflows/ci.yml runs `pnpm run lint:ast`) — so this
+  cannot regress unnoticed the way an advisory ratchet can. ast-grep itself is
+  NOT subject to the NUL blindness (positive-controlled), which is why it is a
+  sound instrument for this.
+
+  THIS RULE IS TYPESCRIPT-ONLY, AND THAT IS NOT SUFFICIENT ON ITS OWN. While
+  this very rule was being authored, three literal NULs were accidentally
+  written into this .yml file, and a TypeScript-scoped rule could not see them.
+  The repo-wide, language-agnostic backstop is
+  scripts/check-no-literal-nul-bytes.ts, which enumerates the git index and
+  byte-scans every tracked text file; its pure logic is unit-tested by
+  scripts/__tests__/no-literal-nul-bytes.test.ts. Keep both: this rule is the
+  authoring-time signal with a precise message at the pre-commit gate; that
+  script is the complete population check.
+metadata:
+  enforces: "a NUL byte in TypeScript source is written as an escape, never as a raw 0x00, so the file stays greppable"
+  origin: "HV-700 — 17 tracked .ts files invisible to shell grep (ugrep -I skips binary; exit 1 reads as no-match)"
+rule:
+  kind: program
+  regex: '\x00'

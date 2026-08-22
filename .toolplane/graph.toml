@@ -1,0 +1,9 @@
+apiVersion = 1
+
+# No cross-package edge here is invisible to structural discovery: every dependency between the
+# five published packages is declared in its own package.json, so the graph needs no operator
+# assertion on top.
+extraEdges = []
+
+# No Rust in this repo.
+legacyRustRoots = []

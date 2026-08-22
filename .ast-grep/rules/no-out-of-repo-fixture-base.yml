@@ -1,0 +1,187 @@
+id: no-out-of-repo-fixture-base
+language: TypeScript
+severity: warning
+message: "This roots a scratch/fixture directory OUTSIDE the repo (`os.tmpdir()`, the `TMPDIR` env var, or a `/tmp` literal), which violates hard invariant I-1 (the plane never considers a file outside the bounds of the repo it operates in) and, because nothing out there is ever swept, invariant I-2 (no unbounded growth of test artifacts). Root it IN-REPO instead: in a `*.test.ts` / `*.itest.ts` file call `suiteFixtureRoot('<suite-label>')` from `@packages/effect-bun-test/fixture-root-suite` and use `root.path()` / `root.mkdir()` / `root.reserve()`; in a SHARED non-test module call `makeFixtureRoot('<label>')` from `@packages/effect-bun-test/fixture-root` and own an explicit `dispose()`, or `fixtureDirAtBase('<prefix>')` when the module already has a per-fixture cleanup contract and cannot hold a suite root. Both mint under the repo-local, gitignored `.test-fixtures/` base with an ownership token, so the L1 entry sweep, the L2 parent sweep and the L3 residue tripwire can all see and reap what you created. Do NOT add this file to `ignores` — the ratchet in `scripts/ratchet-baseline.json` is the sanctioned mechanism for the existing debt, and it only ever ratchets DOWN."
+note: |
+  HV-065, layer L4 (the static guard over the fixture BASE; L2's sibling guard
+  `no-hook-fixture-root-outside-test-file` governs WHO may register the reaping
+  hook). This rule is the only arm that reaches the unmigrated call sites: the
+  shared helper `@packages/effect-bun-test/fixture-root` can be re-rooted into
+  the repo in one edit, and doing so removes approximately NONE of the leak,
+  because the entire volume lives in raw `mkdtempSync(join(tmpdir(), ...))`
+  call sites that never learn about the helper. Re-rooting the helper is
+  necessary and not sufficient; a static guard plus a ratchet is what bounds
+  the debt.
+
+  MEASURED (macOS/APFS, bun 1.3.14) — cite these, do not re-derive them:
+
+    P1 PEAK. The per-user `$TMPDIR` reached 928,129 entries / ~34GB before the
+       operator cleared it by hand. Of 200 sampled leaked dirs, 103 were EMPTY
+       and 97 still held data — so roughly half were not even emptied, let
+       alone removed.
+    P2 RATE. ONE repo-root aggregate run
+       (`pnpm -r --if-present run test:unit:once`) took a freshly-cleared
+       per-user `$TMPDIR` from 171 to 1,582 entries: +1,411 stranded dirs in a
+       SINGLE run. That is the growth rate this rule exists to stop, and it is
+       why an out-of-repo base is never a "small" or local choice.
+    P3 LOCATION IS NEAR-NOISE ON A CLEAN DIRECTORY. 542ms (pristine per-user
+       temp) vs 484ms (`/tmp`) for the same 16-test file. ~91% of the historical
+       latency was POLLUTION, not location — so the value of this rule is
+       PREVENTING RECURRENCE, not a latency delta. Do not cite the 6195ms
+       polluted figure as a baseline for anything.
+    P4 WHAT ACTUALLY STRANDS, and this CORRECTS an earlier version of this very
+       note. A PER-CASE TIMEOUT DOES **NOT** STRAND: measured on bun 1.3.14,
+       `it(…, 300)` around a 30s await still ran `afterAll` and removed the
+       fixture (re-run to confirm). The modes that DO strand are a `--bail`
+       bail-out, a SIGKILL, and a runner crash — including the plane's own
+       gate-level `proc.kill(9)`. So the amplification runs THROUGH the
+       bail/kill, not through the timeout: a growing directory slows fixture
+       setup, slow setup pushes cases past their walls, and a case that blows
+       its wall under `--bail` or a gate kill strands its fixture. The earlier
+       wording ("a test times out -> afterAll never runs") was inherited
+       unverified and was on its way to becoming a citation that told readers
+       not to re-check it, which is why it is corrected here rather than
+       softened.
+
+  ALLOWED (in-repo, ownership-tokened, sweepable):
+    const root = suiteFixtureRoot('my-suite');   // *.test.ts / *.itest.ts only
+    const root = makeFixtureRoot('my-thing');    // shared non-test module
+    const dir  = fixtureDirAtBase('my-thing');   // shared module, no suite root
+    mkdtempSync(join(root.path(), 'case-'));     // a child of a suite root
+
+  NOT ALLOWED EVEN THOUGH IT IS IN-REPO, and an earlier version of this note
+  wrongly listed it as allowed: `mkdtempSync(join(fixtureBase(), 'x-'))`. It
+  mints a directory with NO ownership token, so `parseFixtureOwner` returns
+  undefined, the entry can never be judged by liveness, and it is reported as
+  `unjudgeable` until it ages out — the opposite of "ownership-tokened,
+  sweepable". `fixtureDirAtBase` is the ONLY sanctioned way to mint directly on
+  the base. This rule does not catch it (the base is in-repo, so there is
+  nothing out-of-repo to match); it is a convention this note has to carry.
+
+  BANNED (every shape below matches):
+    mkdtempSync(join(tmpdir(), 'x-'));
+    await mkdtemp(join(os.tmpdir(), 'x-'));
+    mkdtempSync(join('/tmp', 'x-'));
+    mkdtempSync("/tmp/x-");
+    mkdtempSync(tmpdir());
+    mkdtempSync(os.tmpdir());
+    mkdtempSync(`${tmpdir()}/x-`);
+    fs.mkdtempSync(path.join(os.tmpdir(), 'x-'));
+
+  MATCHING. A `call_expression` whose callee ENDS in `mkdtemp` or `mkdtempSync`
+  (so the bare import `mkdtempSync(...)`, the namespace form
+  `fs.mkdtempSync(...)`, and the promise form `await fsp.mkdtemp(...)` are all
+  covered), which CONTAINS anywhere in its subtree either a `tmpdir()` call
+  (bare or `<ns>.tmpdir()`) or a string literal beginning `/tmp`. Searching the
+  whole subtree rather than the first argument is what makes the `join(...)`,
+  `resolve(...)`, no-`join`, and template-literal spellings one rule instead of
+  four, and it is why `` mkdtempSync(`${tmpdir()}/x-`) `` is caught even though
+  the base is not a distinct argument node.
+
+  MESSAGE TEXT CARRIES NO `$UPPER` TOKEN, and that is not style. MEASURED: the
+  `message` field is METAVARIABLE-INTERPOLATED at render time, so an earlier
+  draft writing the env var as a bare `$TMPDIR` rendered as an EMPTY STRING in
+  `pnpm lint:ast` output — the guard fired correctly and then told the author
+  the base was "`os.tmpdir()` /  / a `/tmp` literal". `note` is NOT interpolated
+  (the `${tmpdir()}` in the BANNED block above renders verbatim), so the
+  hazard is confined to `message`.
+
+  DELIBERATE LIMIT: an indirection through a local binding
+  (`const b = tmpdir(); mkdtempSync(join(b, 'x-'))`) is NOT matched. That is a
+  known and accepted hole — closing it needs dataflow ast-grep does not have.
+  It is bounded by the fact that nobody writes that shape to evade a guard they
+  have not met yet, and by the L3 residue tripwire, which is a FILESYSTEM
+  readdir and therefore catches leakage no static rule can see.
+
+  THREE MORE ACCEPTED HOLES, enumerated so they are known rather than latent
+  (a review found them; they are recorded as accepted, not as oversights):
+    - `process.env.TMPDIR` / `Bun.env.TMPDIR` read as the base instead of
+      `tmpdir()`.
+    - a `'/var/tmp'` or `'/private/tmp'` literal. The string branch is anchored
+      at `/tmp`, so neither matches.
+    - an ALIASED import, `import { tmpdir as t } from 'node:os'`, then `t()`.
+  Each is a real evasion of the LETTER of I-1. They are accepted for now rather
+  than closed because widening the `any:` block raises this rule's finding count,
+  and the count is ratcheted in `scripts/ratchet-baseline.json`: a wider rule needs
+  its baseline RAISED in the same change, which reads as guard-weakening to the
+  edit classifier and cannot be landed by an agent unattended. Closing them is
+  therefore a deliberate follow-up with an operator in the loop, not something to
+  bolt on here. Meanwhile the L3 residue tripwire still sees the leakage, since it
+  reads the filesystem rather than the source.
+
+  IGNORES. `.ast-grep/tests/**` is the rule-INJECTION corpus. MEASURED with
+  this rule's `ignores` stripped and the corpus passed as an explicit path arg
+  (`ast-grep scan -r <rule> .ast-grep/`), EXACTLY SIX files match, one
+  occurrence each:
+
+    .ast-grep/tests/injection-contract.test.ts:45
+    .ast-grep/tests/no-console-in-effect-context.injection.test.ts:35
+    .ast-grep/tests/no-math-random-in-effect-context.injection.test.ts:35
+    .ast-grep/tests/no-new-promise-construction.injection.test.ts:45
+    .ast-grep/tests/no-timers-in-effect-context.injection.test.ts:36
+    .ast-grep/tests/uuid-no-ambient-crypto-randomuuid.injection.test.ts:28
+
+  Each deliberately CONTAINS `mkdtempSync(join(tmpdir(), ...))` as the scratch
+  dir into which it writes synthetic sources and then re-runs `ast-grep scan`
+  to prove some OTHER rule fires inside an injected region. Flagging them is
+  both wrong (they are guard scaffolding, not product fixtures) and
+  self-referential — this rule's own finding count would move whenever an
+  unrelated rule gains an injection test, so an ast-grep rule addition
+  elsewhere in the corpus would break THIS rule's ratchet.
+
+  The entry is NOT redundant, and this was measured rather than assumed. On the
+  DEFAULT repo walk ast-grep descends into no dot-directory at all (across the
+  full corpus of 801 findings from every rule, ZERO come from a path with a
+  dot-segment), so `pnpm lint:ast` and the ratchet collector — both of which
+  invoke `ast-grep scan` with no path argument — never reach these six files
+  regardless. The entry becomes load-bearing the moment a path ARGUMENT reaches
+  them (`ast-grep scan .ast-grep/`, an editor/LSP single-file scan, a toolplane
+  gate that passes changed paths explicitly, or a future relocation of the
+  corpus out from under a dot-dir). Verified both directions: 6 matches with
+  the entry removed, 0 with it present.
+
+  The module that OWNS the in-repo base — `src/fixture-root.ts` inside
+  `@packages/effect-bun-test` — is no longer scannable from here: that package
+  ships from Angel-Studios/effect-bun-tooling and resolves into node_modules,
+  which this rule's `files:` globs never reach. It used to be deliberately NOT
+  ignored, since it calls `mkdtempSync` four times and was the one file where an
+  exemption would be most tempting, yet matched ZERO times because every call is
+  rooted on `fixtureBase()` / `path()` rather than on `tmpdir()`. That property is
+  now checked in the upstream repo instead of here; what THIS rule still owns is
+  every CALL SITE in this repo, which is where an out-of-repo fixture base would
+  actually be introduced.
+
+  There is deliberately NO enumeration of the ~200 pre-existing debt files in
+  `ignores`. A 200-entry ignore list is unmaintainable, silently rots as files
+  move, and HIDES the debt instead of bounding it. `severity: warning` plus the
+  `ast-grep:no-out-of-repo-fixture-base` entry in `scripts/ratchet-baseline.json`
+  is the mechanism: `pnpm lint:ast` stays green at the current count, and the
+  ratchet fails the build the moment the count goes UP. `severity: error` was
+  considered and rejected — it turns ~200 files red on day one and is
+  unlandable, so it would have been reverted or blanket-ignored within a day,
+  which is strictly worse than a bounded warning.
+metadata:
+  enforces: "Temp/scratch/fixture directories are rooted INSIDE the repo via @packages/effect-bun-test/fixture-root(-suite), never on os.tmpdir()/$TMPDIR//tmp"
+  origin: "HV-065 (hard invariants I-1 repo-bounds + I-2 bounded-artifacts, operator-stated 2026-07-25); companion to .ast-grep/rules/no-hook-fixture-root-outside-test-file.yml and packages/effect-bun-test/src/fixture-root.ts"
+rule:
+  kind: call_expression
+  all:
+    # Callee is `mkdtemp` / `mkdtempSync`, bare or namespaced (`fs.`, `fsp.`, `node:fs` default import).
+    - has:
+        field: function
+        regex: '(^|\.)mkdtemp(Sync)?$'
+    # ...and somewhere in the call's subtree the BASE is an out-of-repo location.
+    - has:
+        stopBy: end
+        any:
+          # `tmpdir()` — the named import from `node:os`.
+          - pattern: tmpdir()
+          # `os.tmpdir()` / any namespaced spelling.
+          - pattern: $NS.tmpdir()
+          # A `/tmp` string literal used as (part of) the base.
+          - kind: string
+            regex: '^[''"]/tmp([/''"]|$)'
+ignores:
+  # The ast-grep rule-INJECTION corpus (see the note): these files deliberately contain the banned
+  # shape as scratch space for proving OTHER rules fire inside injected regions.
+  - ".ast-grep/tests/**"

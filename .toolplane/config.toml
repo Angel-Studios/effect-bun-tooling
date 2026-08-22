@@ -1,0 +1,13 @@
+apiVersion = 1
+repo = "effect-bun-tooling"
+
+# Only ts-effect is pinned. `svelte-frontend` is deliberately absent: the assimilator's survey
+# looks for a svelte.config or a root-manifest svelte dependency, and this repo has neither.
+# `@packages/bun-svelte-test` COMPILES Svelte for its consumers but contains no Svelte source of
+# its own, so pinning the pack would assert a stack the tree shows no evidence of and the
+# convergence check would report it as drift forever.
+stackPacks = [
+  { name = "ts-effect", version = "0.1.0" },
+]
+
+workspaceRoots = ["packages/*"]

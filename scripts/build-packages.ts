@@ -33,6 +33,7 @@ import {
   distFiles,
   distModuleFiles,
   publishablePackages,
+  SOURCE_DIR,
   sourceEntrypoints,
   typeTargets,
   WORKSPACE_SCOPE,
@@ -145,6 +146,12 @@ export const buildOne = (pkg: WorkspacePackage, siblings: readonly WorkspacePack
   const entrypoints = sourceEntrypoints(pkg);
   if (entrypoints.length === 0) throw new Error(`${pkg.manifest.name} declares no exports to build`);
 
+  // `--root` is not optional and not a tidiness flag: without it the bundler infers an output root
+  // from the entrypoints' COMMON ANCESTOR while `tsc` uses the statically declared `rootDir`, so a
+  // package whose entrypoints all sit under one directory emits its `.js` a level shallower than
+  // its `.d.ts`. Measured on bun 1.3.14: a lone `src/a/b/sweep.ts` entrypoint emits `dist/sweep.js`
+  // against `tsc`'s `dist/a/b/sweep.d.ts`. Declaring the same root both emitters already agree on
+  // makes the inference unreachable.
   run(
     [
       'bun',
@@ -153,6 +160,7 @@ export const buildOne = (pkg: WorkspacePackage, siblings: readonly WorkspacePack
       '--splitting',
       '--sourcemap=linked',
       `--outdir=${dist}`,
+      `--root=${SOURCE_DIR}`,
       ...externalsOf(pkg).map((name) => `--external=${name}`),
       ...entrypoints,
     ],
@@ -174,11 +182,15 @@ export const buildOne = (pkg: WorkspacePackage, siblings: readonly WorkspacePack
 
   foldSiblingTypes(pkg, siblings);
 
-  for (const entry of Object.values(pkg.manifest.exports ?? {})) {
-    for (const target of [entry.default, entry.types]) {
+  // Every condition, not just `types` and `default`: a condition this loop does not read is a
+  // public entry point nothing proves was built, and these packages ship to consumers as tarballs.
+  for (const [subpath, entry] of Object.entries(pkg.manifest.exports ?? {})) {
+    for (const [condition, target] of Object.entries(entry)) {
       const path = join(pkg.dir, target);
       if (!existsSync(path)) {
-        throw new Error(`${pkg.manifest.name} exports ${target}, which the build did not produce`);
+        throw new Error(
+          `${pkg.manifest.name} exports ${subpath} ${condition} as ${target}, which the build did not produce`,
+        );
       }
     }
   }

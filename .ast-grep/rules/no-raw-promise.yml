@@ -1,0 +1,95 @@
+id: no-raw-promise
+language: TypeScript
+severity: error
+message: "Prefer Effect primitives over raw Promise APIs. Use Effect.tryPromise to bridge when needed."
+note: |
+  This codebase uses Effect for async control flow. Raw Promise construction
+  and static methods bypass Effect's error channel, interruption, and tracing.
+  Use Effect.tryPromise to bridge external Promise-based APIs, or Effect
+  primitives (Effect.all, Effect.race, etc.) for composition.
+
+  MATCH THE NODE, NOT THE UNTYPED SPELLING. This rule used to be a list of
+  `pattern:` entries — `new Promise($$$ARGS)`, `Promise.all($$$ARGS)` and so
+  on — and an ast-grep pattern does not match a call that carries type
+  arguments. So `new Promise<T>(...)` and `Promise.resolve<T>(...)` were
+  invisible, which is the spelling anyone writing typed TypeScript reaches
+  for first: 16 such sites hid in `packages/ui` alone during the extraction.
+  Matching `kind: new_expression` on the constructor and `kind:
+  call_expression` on the callee makes the match independent of type
+  arguments. Do NOT convert these back to `pattern:` entries.
+
+  THE `(await\s+)?` PREFIX IS LOAD-BEARING, NOT DEFENSIVE. In `await
+  Promise.all<T>(xs)` the TypeScript grammar folds the `await` INTO the callee
+  node, so the callee's text is `await Promise.all` and an anchored `^Promise\.`
+  regex does not match it — while the very same call without type arguments
+  parses normally and does match. So `await` plus type arguments was a THIRD
+  invisible spelling, found only by attacking this widening after writing it. Do
+  not remove the prefix because it looks redundant; it is the difference between
+  seeing `await Promise.all<T>(xs)` and not.
+
+  `Promise.withResolvers` is in the list deliberately. It is the one form
+  that constructs a raw Promise without writing `new Promise`, so leaving it
+  out would leave a documented way to defeat this rule without fixing
+  anything. It measured 0 non-test sites when it was added, so it locks a
+  clean state rather than ratcheting a debt.
+
+  THE ONE PACKAGE EXEMPTION, DISCLOSED AND TESTED. `ignores:` carries
+  `apps/desktop/**` alongside the conventional test/script/vendor globs, and it
+  buys exactly 2 findings of green: `apps/desktop/src/main.ts:79` (a `setTimeout`
+  sleep) and `:99` (a DOM-button-click-to-promise bridge). The premise stated at
+  the top of this note is "this codebase uses Effect for async control flow", and
+  `@ultravisor/desktop` sits outside that premise: it is a Vite-bundled Tauri
+  WKWebView splash surface whose `dependencies` is `{"@tauri-apps/api": "^2"}`,
+  it imports `effect` in zero files, and it has no Bun global, so `Bun.sleep`
+  type-checks there and would crash at runtime.
+
+  A BARE GLOB WOULD NOT BE ACCEPTABLE AND THIS ONE IS NOT BARE. The exemption is
+  registered in `tools/ast-grep-policy/exemption-contracts.ts` under the
+  `no-effect-dependency` contract, enforced by
+  `tools/ast-grep-policy/__test__/exemption-contracts.test.ts` AND by
+  `lint:ast:policy` itself, which fails if `apps/desktop` ever declares an
+  `effect` dependency in ANY manifest field or imports `effect` from ANY source
+  file — including a bare `import 'effect'` with no binding — and equally if this
+  `ignores:` entry is removed while the registry still claims it. Adding a package
+  to this list without a passing contract fails the gate, so the list cannot grow
+  silently.
+
+  THE LIMIT OF THAT CONTRACT, since a guard's blind spot belongs next to the
+  guard. It checks DIRECT declaration and DIRECT import only. `apps/desktop`
+  devDepends on `@ultravisor/node-agent`, which does declare `effect`, so Effect
+  is reachable transitively today; what the contract asserts is the property this
+  exemption actually rests on — that no desktop SOURCE file uses Effect for async
+  control flow — and not the stronger claim that Effect is unreachable from the
+  package. Read it as "this package does not use Effect", not "this package
+  cannot".
+metadata:
+  enforces: "Async control flow goes through Effect, never raw Promise construction/statics, with or without explicit type arguments"
+  origin: "pre-ledger (backfilled C1); widened from type-argument-blind patterns to node-kind matching, and Promise.withResolvers added, in the ultravisor extraction (P2)"
+rule:
+  any:
+    - kind: new_expression
+      has:
+        field: constructor
+        regex: "^(await\\s+)?Promise$"
+    - kind: call_expression
+      has:
+        field: function
+        regex: "^(await\\s+)?Promise\\s*\\.\\s*(all|allSettled|any|race|reject|resolve|try|withResolvers)$"
+# Retargeted to THIS repo's source roots during assimilation. The ported globs named
+# `apps/**`, which does not exist here: a rule scoped only to it scanned ZERO files while
+# still appearing in the corpus, which reads exactly like a rule with nothing to report.
+files:
+  - "packages/**/*.ts"
+  - "scripts/**/*.ts"
+  - "tools/**/*.ts"
+  - "__e2e__/**/*.ts"
+ignores:
+  - "**/__test__/**"
+  - "**/__tests__/**"
+  - "**/*.test.ts"
+  - "**/*.itest.ts"
+  - "**/*.test.tsx"
+  - "**/*.itest.tsx"
+  - "**/scripts/**"
+  - "**/vendor/**"
+  - "apps/desktop/**"

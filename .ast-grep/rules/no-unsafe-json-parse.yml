@@ -1,0 +1,36 @@
+id: no-unsafe-json-parse
+language: TypeScript
+severity: error
+message: "JSON.parse can throw on invalid input. Consider wrapping in Schema.decode or Effect.try."
+note: |
+  JSON.parse throws a SyntaxError on malformed input. In Effect code, unhandled
+  throws become defects rather than typed errors. Use Schema.decode with
+  Schema.parseJson, or wrap in Effect.try for proper error channel handling.
+metadata:
+  enforces: "JSON.parse inside Effect generators is wrapped (Effect.try / Schema.parseJson) so malformed input lands in the typed error channel"
+  origin: "pre-ledger (backfilled C1)"
+rule:
+  pattern: JSON.parse($$$ARGS)
+  inside:
+    kind: generator_function
+    stopBy: end
+  not:
+    inside:
+      pattern: Effect.try($$$WRAP)
+      stopBy:
+        kind: generator_function
+# Retargeted to THIS repo's source roots during assimilation. The ported globs named
+# `apps/**`, which does not exist here: a rule scoped only to it scanned ZERO files while
+# still appearing in the corpus, which reads exactly like a rule with nothing to report.
+files:
+  - "packages/**/*.ts"
+  - "scripts/**/*.ts"
+  - "tools/**/*.ts"
+  - "__e2e__/**/*.ts"
+ignores:
+  - "**/__test__/**"
+  - "**/__tests__/**"
+  - "**/*.test.ts"
+  - "**/*.itest.ts"
+  - "**/*.test.tsx"
+  - "**/*.itest.tsx"

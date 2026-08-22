@@ -1,0 +1,168 @@
+id: no-signal-blind-exit-status-guard
+language: TypeScript
+severity: error
+message: "Signal-BLIND exit-code guard: a spawnSync child KILLED BY A SIGNAL reports a NULL exit code — `status` on `node:child_process.spawnSync`, `exitCode` on `Bun.spawnSync` (both MEASURED) — so `typeof res.status === 'number'` is FALSE, `&&` short-circuits, this guard's own throw is SKIPPED, and a killed child is reported as SUCCESS. Check the kill FIRST — `if (res.signal !== null) throw ...` (Bun: `if (proc.exitCode === null) throw ...`), or treat the null code as failure — BEFORE any exit-code comparison; see `packages/nav-protocol-roku-instrumentation/src/parse/ensure-cli.ts:86` and `packages/toolplane/src/cli/dod-plan.integration.test.ts:36`, which already do exactly that. Do NOT \"fix\" this by deleting the `typeof` and keeping the comparison order: the plain form `res.status !== 0` is SAFE and deliberately not flagged (`null !== 0` is `true`, so it fails CLOSED and throws), but it must still not be the only check when a truncated stdout can be mistaken for a complete one."
+note: |
+  THE HOLE, precisely. `spawnSync` reports `status === null` for a child killed
+  by a signal: the child never got to CHOOSE an exit code, which is the
+  STRONGEST failure signal available — stronger than any non-zero code. A guard
+  written
+
+      if (typeof res.status === 'number' && res.status !== 0) throw ...
+
+  evaluates the FIRST conjunct against `null`, gets `false`, short-circuits, and
+  never reaches its own `throw`. The `typeof` was almost certainly added to
+  satisfy `tsc` (`TS18047: 'res.status' is possibly 'null'`), and it silences the
+  type error by converting a null status into the SUCCESS branch. That is the
+  whole defect: a type-narrowing convenience that inverts a failure into a pass.
+
+  Contrast the plain form, which is why this rule requires the `&&` conjunction
+  and does NOT fire on ~24 in-repo sites that use it:
+
+      if (res.status !== 0) throw ...     // null !== 0 is TRUE -> throws -> SAFE
+
+  The plain form fails CLOSED on a kill. Only the `typeof`-narrowed conjunction
+  fails OPEN. Flagging the plain form would be flagging correct code.
+
+  WHY IT MATTERS MORE THAN A CRASH. This is not a robustness nicety — it is a
+  FALSE NEGATIVE on a shipping artifact. On the two `bundle-grep.ts` sites this
+  rule was written from, the guarded pipeline is the REQUIRED zero-trace gate
+  that proves no instrumentation marker survives into a production Roku bundle. A
+  killed `unzip` yields empty stdout, so `grep` sees empty input and exits 1 ("no
+  match"); a killed `grep` yields empty stdout, so `parseInt('')` is `NaN`
+  coerced to 0. Either way the marker count is 0 and a CONTAMINATED bundle passes
+  the gate. On the `parse.ts` site a killed `tree-sitter` returned an empty or
+  TRUNCATED s-expression that still parses — into a silently incomplete tree. All
+  three were measured as real signal kills (`kill -KILL`), not simulated. And it
+  is LOAD-DEPENDENT: contention is what gets children killed, so it hides in
+  exactly the conditions where the fleet runs hottest.
+
+  THE CORRECT SHAPE — established in-repo BEFORE the three defective sites were
+  written, which is what makes this rule a codified miss rather than a new
+  policy:
+
+      // packages/nav-protocol-roku-instrumentation/src/parse/ensure-cli.ts:86
+      if (res.signal !== null) {
+        return { ok: false, detail: `killed by ${res.signal} (...)` };
+      }
+      if (res.status !== 0 || ...) { ... }
+
+  Or hand the caller a non-null code so the comparison cannot be written against
+  a nullable value at all, as `exitStatusOrThrow` in
+  `packages/nav-protocol-roku-runtime/src/build-time/bundle-grep.ts` now does.
+  Returning the code rather than asserting `void` is deliberate: a `void` assert
+  does not narrow, and would leave the same null-typed `status` in scope for the
+  next author to re-narrow the same way.
+
+  BOTH SPAWN APIs ARE COVERED, because the repo uses both and the mechanism is
+  identical. The anchor is `(?:status|exitCode)`:
+
+    * `node:child_process.spawnSync` -> `status === null`, `signal === 'SIGKILL'`
+    * `Bun.spawnSync`                -> `exitCode === null`, `signalCode === 'SIGKILL'`
+
+  Both MEASURED directly against a `kill -KILL $$` child, not assumed from docs.
+  `Bun.spawnSync` is now the PREVAILING spawn API here — PR #2083 added nine new
+  `Bun.spawnSync` call sites carrying `timeout:`, and a `timeout:` is precisely a
+  signal kill on expiry, so those sites sit on this exact hazard. They are all
+  written correctly today (`dod-plan.integration.test.ts:36` checks
+  `proc.exitCode === null` FIRST and cites `finding:HV-126`; `real-repos.live.test.ts:95`
+  uses the fail-closed plain form), but a `status`-only rule would have guarded the
+  SHRINKING half of the surface while going blind to the growing half. Extending
+  the anchor was measured to add ZERO findings and ZERO false positives.
+
+  MECHANISM, and why it is a regex on the LEFT operand rather than a bare
+  pattern. The rule matches an `&&` whose left operand is a `typeof`-comparison
+  against `'number'` mentioning a `status` or `exitCode` word. Anchoring on the
+  node TEXT of the left operand (rather than a fistful of literal patterns) closes
+  five spellings that are each ONE KEYSTROKE from the flagged form and would
+  otherwise be free evasions — all five MEASURED as caught:
+
+    1. `typeof res.status === "number" && ...`   (double-quoted)
+    2. `typeof status === 'number' && ...`       (destructured/bare identifier)
+    3. `typeof res['status'] === 'number' && ...`(index access)
+    4. `typeof res.child.status === 'number' && ...` (nested member)
+    5. `typeof proc.exitCode === 'number' && ...` (the Bun spelling)
+
+  Left-associativity means `a && b && c` parses as `(a && b) && c`; the INNER
+  node matches and the outer does not (its left operand's text does not end at
+  the `'number'` literal), so a three-conjunct guard yields exactly ONE finding,
+  not two. That is why the three seed sites measure as exactly 3 matches.
+
+  THE `&&` CONJUNCTION IS LOAD-BEARING FOR PRECISION — measured, and a broader
+  rule was rejected on that measurement rather than on taste:
+
+    * `typeof $X.status === 'number'` alone (no conjunction) fires on 3
+      LEGITIMATE in-repo sites, all the safe narrowing shape
+      `const status = typeof obj.status === 'number' ? obj.status : null`:
+      `apps/xavier/src/zendesk/agent/tier2-video-evaluator/evaluator.live.ts:305`,
+      `apps/xavier/src/zendesk/runbook-author/service.live.ts:231`,
+      `apps/xavier/src/zendesk/runbook-author/critic/service.live.ts:226`.
+      Those narrow an `unknown` for reading; they are not failure-check
+      preconditions and there is nothing to fail open.
+    * `typeof $X.exitCode === 'number'` alone fires on 1 LEGITIMATE site,
+      `packages/toolplane/src/exec/unit-dispatch.ts:133`, which normalises
+      a null code to `1` (`exitCode: typeof r.exitCode === 'number' ? r.exitCode : 1`)
+      and separately flags `timedOut`. It fails CLOSED, which is why the
+      conjunction requirement — not the anchor — is what keeps it unflagged.
+    * `typeof $X === 'number' && $Y` (dropping the anchor entirely) fires on 44
+      in-repo sites, ZERO of which mention `status` or `exitCode` — they are
+      ordinary numeric validation such as
+      `typeof args['page'] === 'number' && Number.isFinite(args['page'])` and
+      `typeof bf === 'number' && bf > 0`. Adopting it would have meant 44 false
+      positives on correct code.
+
+  All counts were RE-MEASURED on the current tree (main at `5b0e8e625`, after
+  #2076/#2082/#2083) immediately before this rule landed, not carried forward from
+  the authoring session: the anchorless count had itself drifted 48 -> 44 as the
+  tree moved, which is exactly why a prose count is re-derived rather than
+  trusted. A guard that fires on safe code is worse than no guard, so the
+  `(?:status|exitCode)` anchor AND the conjunction are both required.
+
+  KNOWN, ACCEPTED NON-CATCHES — every one prefers a false negative to a false
+  positive, and this list is exhaustive as far as it is known. Treat any form not
+  listed here and not caught above as an unreviewed hole, and close it:
+
+    a. Aliasing the field away from the names `status`/`exitCode`
+       (`const code = res.status; if (typeof code === 'number' && ...)`). The
+       rule is syntactic and anchors on the identifier TEXT; it cannot follow a
+       binding. Dropping the anchor is the 44-false-positive rule above.
+    b. A guard split across statements
+       (`const ok = typeof res.status === 'number'; if (ok && res.status !== 0)`).
+       Same limitation; no in-tree instance.
+    c. `.tsx` / `.svelte`. `language: TypeScript` covers `.ts`; ast-grep parses
+       Tsx as a separate language. The gap is currently EMPTY — no `.tsx` file
+       calls `spawnSync`.
+    d. The INVERSE laundering, `if (typeof res.status !== 'number') return;`
+       followed by an exit-code check — an early RETURN (rather than a throw) on
+       a killed child is the same false negative wearing different clothes. It is
+       not flagged because the identical shape with a `throw`/`return {ok:false}`
+       body is CORRECT, and ast-grep cannot tell the two bodies apart without
+       encoding the whole function's contract. No in-tree instance.
+
+  WHEN THIS RULE FIRES ON YOU: rewrite the guard — check `signal` (or a null
+  `status`) first, then compare the exit code. Do NOT add an `ignores:` entry: an
+  entry exempts the WHOLE FILE from the WHOLE rule forever, which buys silence on
+  one line at the price of blindness to every other signal-blind guard in that
+  file. There are no `ignores:` today and the intended end state is none.
+
+  Seeded at ZERO: the three sites this rule was written from were fixed first
+  (PR #2076), so this guard has no debt allowance and no `scripts/ratchet-baseline.json`
+  entry. Per `packages/toolplane/src/ratchet/findings.ts` a rule absent from the baseline is
+  compared against 0, so any NEW occurrence is an increase and fails. See
+  `docs/failure-modes/FM-0012-signal-blind-exit-status-guard.md`.
+metadata:
+  enforces: "A signal-killed spawnSync child (status === null) is never laundered into success by a `typeof status === 'number' &&` conjunct that short-circuits past its own throw"
+  origin: "FM-0012"
+rule:
+  pattern: $GUARD && $REST
+  has:
+    field: left
+    regex: "^typeof\\s+[^=]*\\b(?:status|exitCode)\\b[^=]*===\\s*['\"]number['\"]$"
+# Retargeted to THIS repo's source roots during assimilation. The ported globs named
+# `apps/**`, which does not exist here: a rule scoped only to it scanned ZERO files while
+# still appearing in the corpus, which reads exactly like a rule with nothing to report.
+files:
+  - "packages/**/*.ts"
+  - "scripts/**/*.ts"
+  - "tools/**/*.ts"
+  - "__e2e__/**/*.ts"

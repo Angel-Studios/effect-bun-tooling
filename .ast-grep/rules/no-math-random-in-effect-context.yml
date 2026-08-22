@@ -1,0 +1,182 @@
+id: no-math-random-in-effect-context
+language: TypeScript
+severity: warning
+message: "`Math.random()` here sits directly inside an Effect context (an `Effect.gen`/`Effect.fn` generator body, or an `Effect.sync`/`suspend`/`try`/`tryPromise`/`promise`/`async` — v4 `callback` — thunk). In an Effect context, depend on the `Random` service and yield `yield* Random.next` (or `Random.nextInt`, `Random.nextRange`, `Random.nextBoolean`) — injectable, so a test provides a deterministic `Random` layer (or `TestContext`) instead of real entropy, exactly as `Clock` replaces `Date.now()`. Do NOT reach for `Math.random()` to mint an id/token/nonce here: `Effect.Random` is SEEDED PCG and PREDICTABLE under `TestContext`, so it is WRONG for anything that must be unguessable — use `node:crypto` for that, or, for a merely-unique non-crypto id, leave the plain nonce OUTSIDE the Effect context (a plain sync helper), which this rule deliberately does not touch. This is an ADVISORY source-level complement to the enforced `globalRandomInEffect` Effect-LSP rule, which is the HARD `tsc` gate on this same axis. Browser code is NOT path-exempt: if you are inside an Effect context in the frontend, `Effect.Random` is still the injectable idiom (or use judgment if the randomness is disproportionate UI jitter)."
+note: |
+  WHAT FIRES — and, honestly, its NARROW and IRREGULAR firing domain.
+  This rule fires on a `Math.random()` call for which BOTH hold:
+    (1) SOME ancestor is a call to an Effect combinator whose callback body is an
+        Effect context — `Effect.gen(function*(){ … })`, `Effect.fn(function*(){ … })`,
+        `Effect.fnUntraced(...)`, or an `Effect.sync|suspend|try|tryPromise|promise|async`
+        thunk (`async` is the v3 spelling; its v4 successor `Effect.callback` is anchored
+        alongside it — see the BILINGUAL comment on the rule body); AND
+    (2) there is NO non-thunk `arrow_function` / `function_expression` /
+        `function_declaration` ANYWHERE on the ancestor chain between the call and the
+        root (clause (2) is an EXISTENCE check over ALL ancestor functions, not a
+        "nearest enclosing function" check — see the asymmetry in gap (g)).
+  The honest fix where it DOES fire is the `Random` service (`yield* Random.next`),
+  injectable the same way `Clock` replaces `Date.now()`.
+
+  Because of (2), the guard's realistic firing surface is SMALL and SHAPE-DEPENDENT: it
+  fires only on Effects defined at TOP LEVEL (`const x = Effect.gen(function*(){ Math.random() })`)
+  or wrapped in a CLASS/OBJECT METHOD (`method_definition`, which is not a matched function
+  kind). It is SILENT when the Effect is produced by a FACTORY arrow or function
+  (`const make = () => Effect.gen(…)`, `function make(){ return Effect.sync(…) }`) — the
+  dominant way real services are written — because that factory arrow/function is a
+  non-thunk ancestor and clause (2) suppresses the match. So this is a NARROW, IRREGULAR
+  advisory tripwire, NOT a "catch every Math.random directly inside an Effect" gate. That
+  is acceptable BY DESIGN: the direction is SAFE (see below) and the HARD enforcement lives
+  in `globalRandomInEffect`, not here.
+
+  DIRECTION IS SAFE (false negatives only, never a false positive). Clause (1) requires an
+  Effect-thunk ancestor, so a `Math.random()` truly OUTSIDE any Effect context (the rejected
+  `globalRandom`'s ~40 sites: browser UI randomness, plain nonces, test scaffolding) can
+  NEVER match — verified 0 of the 41 real in-tree calls fire. The factory-wrap silence in
+  gap (g) is a MISS, never a spurious fire. There is no gate-break even were this flipped to
+  `error` (it is `warning`; see the last paragraph).
+
+  RELATION TO `globalRandomInEffect` (Effect-LSP code 57, enforced at `error`, burned to 0):
+  OVERLAPPING, not disjoint — this guard's matched shape is a SUBSET of what that LSP rule
+  enforces (that rule resolves Effect context semantically via `getEffectContextFlags`, so it
+  ALSO catches the factory-wrapped forms this guard misses). That is DELIBERATE and precedented:
+  #1754's ambient-crypto guard likewise overlaps the surviving `cryptoRandomUUIDInEffect`.
+  `globalRandomInEffect` remains the HARD gate (it reds `tsc`); THIS guard is a source-level,
+  `.svelte`-aware ADVISORY echo of the same axis. Its HONEST marginal value is narrow:
+  DEFENSE-IN-DEPTH that survives on the separate `pnpm lint:ast` gate even if the Effect-LSP
+  `tsc` patch is ever lost, plus a source-level presence in `.svelte` `<script>` regions via the
+  sgconfig injection. It does NOT (this is a deliberately un-asserted, undemonstrated claim) close
+  a proven `.svelte` hole in `globalRandomInEffect`-via-`check:svelte`; treat it as belt-and-braces,
+  not as recovering a coverage gap. It is `warning` precisely because the hard enforcement already
+  lives in `globalRandomInEffect` — a redundant hard gate would only add fragility.
+
+  RELATION TO THE REJECTED `globalRandom` (code 61): this guard fires on NONE of the ~40 sites
+  `globalRandom` flagged. That is not a gap — every one is a false positive for an "use
+  Effect.Random" demand (≈14 browser, ≈16 test/fixture, ≈6 nonce/identity src, 1 benchmark-noise;
+  0 genuine Effect-service opportunities), which is exactly WHY `globalRandom` was rejected. This
+  guard targets the disjoint inside-Effect shape, a population already burned to 0.
+
+  CRYPTO-IDENTITY CARVE-OUT (SECURITY) — by construction: every nonce/id site in the tree
+  (`makeRunId`, temp-filename mints, capture-epoch `mkEpoch`, run-id allocators) is a PLAIN sync
+  helper OUTSIDE any Effect thunk, so this guard structurally cannot touch it — even `mkEpoch`, an
+  arrow DEFINED INSIDE an `Effect.gen` body, is correctly SILENT because a non-thunk arrow ancestor
+  (the helper) suppresses the match. If a nonce were ever written DIRECTLY in a thunk
+  (`Effect.sync(() => Math.random().toString(36))` at top level), this WOULD fire — and there the
+  fix is NOT `Effect.Random` (seeded/predictable) but `node:crypto` for an unguessable value, or
+  hoisting the plain nonce OUT of the Effect context.
+
+  WHY NO PATH EXEMPTION (browser is NOT ignored): unlike ambient `crypto.randomUUID()` (correct Web
+  Crypto in the browser, wrong in Node → #1754 needed browser globs), `Math.random()` INSIDE an
+  Effect context has no browser/Node split — `Effect.Random` is the injectable idiom in browser
+  Effect code too. The browser false-positive wall (outside-Effect UI randomness, Web APIs, svelte
+  reactive code) is excluded by MATCHER PRECISION (clause (1)), not by glob (measured: 0 of 41 real
+  sites fire, incl. 0 browser). Adding browser globs would create a forward hole (a genuine
+  browser-Effect `Math.random` silently missed) and a rotting hand-list, for no benefit.
+
+  BOUNDED GAPS — treat any form NOT here and NOT matched as an unreviewed hole:
+    a. ALIASED `Math`: `const M = Math; M.random()`, or destructured `const { random } = Math;
+       random()`. ast-grep is syntactic and cannot follow a binding to the global `Math`. Strictly
+       more work than the plain call; reads as deliberate evasion.
+    b. `.tsx`/`.jsx`: `language: TypeScript` covers `.ts`/`.mts`/`.cts` and, via the sgconfig
+       injections, `.svelte` `<script>`/expression regions; ast-grep parses Tsx as a SEPARATE
+       language. Currently EMPTY: grep-verified 0 `.tsx` `Math.random()` in-tree. Same bounded-empty
+       gap as #1754's `.tsx` note.
+    c. The CURRIED `Effect.fn('name')(function*(){ … })` form is NOT matched (the outer call's
+       callee is `Effect.fn('name')`, which the `^Effect\.fn$` anchor does not match; the inner
+       `Effect.fn('name')` call does not contain the generator body). Non-curried
+       `Effect.fn(function*(){ … })` and `Effect.fnUntraced(...)` ARE matched. SAFE-DIRECTION miss;
+       `globalRandomInEffect` covers it.
+    d. HOIST-TO-HELPER laundering: pulling `Math.random()` into a plain sync helper CALLED FROM an
+       Effect (dodging `globalRandomInEffect`). ast-grep has no cross-function dataflow, so this is
+       outside ANY syntactic guard's reach — the same class of gap #1754 accepted. Mitigated: the
+       hoisted helper genuinely IS outside Effect, and every current such helper is a nonce (where
+       `Math.random` is fine anyway).
+    e. An intervening NON-thunk Effect combinator (`Effect.forEach(xs, () => Effect.sync(() =>
+       Math.random()))`) makes a legit inside-`Effect.sync` site SILENT (the outer `forEach` arrow
+       is a non-thunk ancestor → clause (2) suppresses). SAFE-DIRECTION miss; `globalRandomInEffect`
+       catches it.
+    f. non-global member receivers `foo.random()` / `rng.random()` NEVER match — the `Math.random()`
+       pattern anchors on the `Math` identifier receiver by construction.
+    g. FACTORY-WRAP silence + the arrow-vs-method ASYMMETRY (the largest and least-obvious gap,
+       consequence of clause (2) being an existence check). A `Math.random()` DIRECTLY in an Effect
+       thunk is SILENT when any factory `arrow_function`/`function_expression`/`function_declaration`
+       encloses that thunk (`const make = () => Effect.gen(function*(){ Math.random() })`,
+       `function make(){ return Effect.sync(() => Math.random()) }`), yet FIRES when the same Effect
+       is a top-level binding or a CLASS/OBJECT METHOD (`method_definition` is not a matched function
+       kind: `class S { run(){ return Effect.gen(function*(){ Math.random() }) } }` fires). This
+       asymmetry is arbitrary and accepted: widening clause (2) to close it would re-introduce the
+       false positive on the legit `Effect.sync(() => Math.random())` shape (whose `Math.random` is
+       itself inside an arrow), which the double-negation exists to prevent, and would buy 0 today.
+       `globalRandomInEffect` is the semantic gate that catches the factory-wrapped forms.
+
+  There is NO harden-to-error burn-down here: the HARD gate is `globalRandomInEffect`. This guard is
+  advisory (`warning`) by design. To make it a hard source-level tripwire, flip `severity: error`
+  (safe today at 0 findings) AND add the browser `ignores:` globs from #1754 to prevent a
+  browser-inside-Effect gate-break — ship those two together or not at all.
+
+  See `the plan-DB roadmap/effect-lsp record` (Rejected rules → globalRandom) and the plan store
+  `roadmap/effect-lsp` key `35ps667b2jwwu-arch-globalrandom-design`. Hostile-input proof:
+  `.ast-grep/tests/no-math-random-in-effect-context-test.yml` (native, rule LOGIC) and
+  `.ast-grep/tests/no-math-random-in-effect-context.injection.test.ts` (bun; proves the `.svelte`
+  injection is non-vacuous, the outside-Effect wall is silent by construction, and the
+  matcher excludes helper-arrows / factory-wraps / callbacks / nonces).
+metadata:
+  enforces: "Randomness inside an Effect context uses the injectable Random service (yield* Random.next), never Math.random()"
+  origin: "effect-lsp ratchet (retired 2026-07-21, plan-DB roadmap/effect-lsp); globalRandom reject-and-replace (#1759)"
+rule:
+  pattern: Math.random()
+  all:
+    # (1) SOME ancestor is a call to an Effect combinator whose callback body is an
+    #     Effect context. Thunk-body-is-Effect set only (gen/fn/fnUntraced/sync/
+    #     suspend/try/tryPromise/promise/async/callback). Deliberately EXCLUDES
+    #     map/flatMap/forEach/tap — their callback bodies are pure projections, NOT
+    #     Effect contexts, so a bare Math.random there is outside-Effect (rejected
+    #     globalRandom's turf).
+    #     BILINGUAL: `async` is the v3 spelling and `callback` its v4 successor
+    #     (effect@4.0.0-rc.108 `dist/Effect.d.ts` declares `callback` at :1463 and
+    #     has ZERO `declare const async`). Both are listed, not swapped, so this
+    #     anchor keeps matching on a half-migrated tree. Do NOT copy this pair into
+    #     `no-timers-in-effect-context`: that rule excludes BOTH deliberately (an
+    #     `Effect.callback`/`Effect.async` register fn is exactly where a raw timer
+    #     is the correct primitive) — see its note, clause (1).
+    #     V4 ADDITION, not a rename: `fn[A-Za-z]*` is a WILDCARD, not an enumeration.
+    #     effect v4 adds `Effect.fnUntracedEager` (`dist/Effect.d.ts` @since 4.0.0), a
+    #     generator-taking constructor with the same body shape as `fnUntraced`. The
+    #     complete v4 generator-taking set is gen | fn | fnUntraced | fnUntracedEager.
+    #     An ENUMERATION covered three of four and went BLIND inside the fourth — probe:
+    #     an identical body under `fnUntraced` matched and under `fnUntracedEager` matched
+    #     ZERO. That is a permanent silent zero, not a falling count: this rule is
+    #     unrecorded in the ratchet baseline, so a blinded arm reads as a clean tree and
+    #     `ratchet` never prints TIGHTENED. The prior v4 pass fixed the async -> callback
+    #     RENAME and never enumerated v4 ADDITIONS, which is how this survived. The
+    #     wildcard closes the next fn* variant in advance; do NOT collapse it back to a list.
+    - inside:
+        kind: call_expression
+        stopBy: end
+        has:
+          field: function
+          regex: '^Effect\.(gen|fn[A-Za-z]*|sync|suspend|try|tryPromise|promise|async|callback)$'
+    # (2) EXISTENCE check: suppress if ANY ancestor arrow/function-expression/
+    #     function-declaration is a PLAIN helper — i.e. is NOT itself the thunk
+    #     `arguments` of an Effect combinator call. This makes `mkEpoch` (a plain arrow
+    #     inside a gen body), nested map/callback closures, AND factory-arrow/function
+    #     wraps (gap g) SILENT, while `Effect.sync(() => Math.random())` (the arrow IS
+    #     the thunk) at top level FIRES. The double-negation is load-bearing; do not
+    #     simplify without re-running the hostile fixtures (a bare
+    #     `not: {inside: {any:[arrow,...]}}` would wrongly silence the legit
+    #     direct-in-thunk case).
+    - not:
+        inside:
+          stopBy: end
+          any:
+            - kind: arrow_function
+            - kind: function_expression
+            - kind: function_declaration
+          not:
+            inside:
+              kind: arguments
+              inside:
+                kind: call_expression
+                has:
+                  field: function
+                  regex: '^Effect\.(gen|fn[A-Za-z]*|sync|suspend|try|tryPromise|promise|async|callback)$'
+# ignores: (INTENTIONALLY ABSENT — see note "WHY NO PATH EXEMPTION")

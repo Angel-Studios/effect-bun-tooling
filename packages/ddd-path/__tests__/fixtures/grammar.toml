@@ -1,0 +1,48 @@
+# The per-repo shell table under test. Derived from the worked example in docs/grammar/README.md
+# section 4, widened so one table resolves BOTH corpora the reference cites: project-xavier's
+# Gradle flavor source sets at 444244199 and the fifteen Kotlin Multiplatform source sets in
+# harvest/kmp at 1e7d64f. Two optional_run entries carry the two org package paths those corpora
+# use; each is all-or-nothing on its own.
+
+version = 1
+
+[shell.typescript]
+source = [{ literal = "src" }]
+test = []
+
+[shell.rust]
+source = [{ literal = "src" }]
+test = [{ literal = "tests" }]
+test_kind = "integration"
+
+[shell.elixir]
+source = [{ literal = "lib" }]
+test = [{ literal = "test" }]
+test_kind = "unit"
+
+[shell.swift]
+source = [{ literal = "Sources" }, { context = true }]
+test = [{ literal = "Tests" }, { context = true, suffix = "Tests" }]
+test_kind = "unit"
+
+[shell.brightscript]
+source = [{ literal = "source" }]
+extra_source_roots = [ [{ literal = "components" }] ]
+test = []
+
+[shell.kotlin]
+source = [
+  { literal = "src" },
+  { any_of = ["main", "test", "xavierDebug", "xavierRelease", "testXavierDebug", "commonMain", "commonTest", "androidMain", "androidHostTest", "iosMain", "iosTest", "iosArm64Main", "iosSimulatorArm64Main", "jsMain", "jsTest", "jvmMain", "jvmTest", "wasmJsMain", "wasmJsTest", "webMain"] },
+  { any_of = ["kotlin", "java"] },
+  { optional_run = ["com", "angel", "xavier"] },
+  { optional_run = ["day", "harvest"] },
+]
+test = [
+  { literal = "src" },
+  { any_of = ["test", "testXavierDebug", "commonTest", "androidHostTest", "iosTest", "jsTest", "jvmTest", "wasmJsTest"] },
+  { any_of = ["kotlin", "java"] },
+  { optional_run = ["com", "angel", "xavier"] },
+  { optional_run = ["day", "harvest"] },
+]
+test_kind = "unit"

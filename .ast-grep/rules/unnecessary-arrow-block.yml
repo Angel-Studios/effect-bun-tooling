@@ -1,0 +1,118 @@
+id: unnecessary-arrow-block
+language: TypeScript
+severity: warning
+message: "This arrow's block body is a single `return <expr>;`. Prefer the concise `(params) => <expr>` form — the braces and `return` add nothing. Multi-statement blocks, blocks with a comment, object-literal returns, and already-concise arrows are exempt."
+note: |
+  Replaces the Effect-LSP rule `unnecessaryArrowBlock`, REJECTED 2026-07-16. That rule
+  flagged an arrow whose block body could be a concise expression, but its `.svelte`
+  ceiling is a ~688-site svelte2tsx codegen FLOOR: `<Comp>children</Comp>` compiles to a
+  generated `() => { return <children>; }` thunk that svelte-check maps back to the
+  component's opening tag, and no behaviour-preserving SOURCE edit removes it. `pnpm
+  check:svelte` does NOT flow through the ratchet's carve-out, so the rule can never flip
+  to `error`. Operator verdict: drop the LSP rule, replace with this source-scanning guard.
+
+  WHY ast-grep RECOVERS REAL VALUE WHERE THE LSP RULE COULD NOT: ast-grep scans SOURCE, so
+  the svelte2tsx generated thunks are invisible BY CONSTRUCTION (they exist only in codegen,
+  never on disk). This guard therefore flags only AUTHOR-written `.ts` arrow-blocks — free of the
+  generated-thunk floor that drowned out the LSP rule's `.svelte` signal (the `.svelte` AUTHOR
+  sites themselves remain the W2 gap below). HONEST SCOPE: this recovers only the ALWAYS-SAFE
+  `return`-form subset (2 author sites in this tree today) — a durable, forward-looking
+  tripwire, NOT a reproduction of the LSP rule's full count (see the out-of-scope list below).
+
+  FLAG (fires): an author arrow whose block body is a SINGLE `return <expr>;` with an
+  argument — `(params) => { return E; }`  →  `(params) => E`. The braces and `return` add
+  nothing; the rewrite is ALWAYS semantics-preserving for the `return` form. A parenthesized
+  object return `{ return ({ a: x }); }` ALSO fires — the concise form `=> ({ a: x })` is
+  valid, so this is a real, safe suggestion (only the BARE `{ return { a: x }; }` form is
+  exempt — see below).
+
+  EXEMPT (must not fire), each for a concrete reason:
+    - multi-statement block `{ const y = ..; return y; }` — collapsing would drop statements;
+    - block containing a block-level comment `{ // note \n return x; }` / `{ return x; /* c */ }`
+      — the concise form has no braces to host the comment, so it would be orphaned. (A comment
+      INSIDE the returned expression, or inside a nested function that is the return value,
+      SURVIVES the collapse and so this rule correctly STILL fires — see the mechanism note);
+    - BARE object-literal return `{ return { a: x }; }` — the concise form needs wrapping parens
+      `=> ({ a: x })` or the `{` reads as a block; auto-wrapping is a rewrite this advisory rule
+      declines to prescribe, so the bare form is EXEMPT (the safer default, per spec). Note the
+      already-parenthesized `{ return ({ a: x }); }` is NOT this case and DOES fire (above);
+    - already-concise `(x) => x + 1` — nothing to simplify;
+    - bare `return;` with no argument — not a value-returning block;
+    - empty block `(x) => {}` — no return at all;
+    - void single-statement block `(x) => { doSideEffect(x); }` — collapsing to `(x) => doSideEffect(x)`
+      changes the arrow's return type from `void`, so it is NOT an always-safe rewrite and is
+      OUT OF SCOPE (the LSP rule flagged these too; this guard deliberately does not — see below).
+
+  THE MECHANISM (tree-sitter kinds — validated empirically, ast-grep 0.42.2):
+    `kind: arrow_function` matches every arrow REGARDLESS of an explicit `: ReturnType`
+    annotation, `async`, or a bare unparenthesized single param — a param-parens PATTERN
+    (`($$$P) => {..}`) would structurally miss return-typed arrows (this repo's dominant shape)
+    because the pattern lacks the `return_type` field. The body field is constrained by the
+    sub-pattern `{ return $BODY; }`, which parses as a `statement_block` containing exactly one
+    `return_statement` with an argument: exactly-one-statement (a multi-statement block has a
+    different child count and does not match), has-an-argument (a bare `return;` has no child and
+    does not match), and — because a block-level comment is an `extra` node that changes the
+    block's children — a commented block does not match either. The `not` clause reaches
+    body → return_statement → `object` to exempt BARE object-literal returns specifically (a
+    top-level `object`-anywhere exemption would over-exempt a param default like `(a = {b:1}) => {..}`).
+
+  KNOWN FALSE-NEGATIVES (accepted; precision on the exempt side is paramount, mirrors psoj):
+    - void single-statement blocks (230 author sites here) — semantics-changing, out of scope;
+    - BARE object-literal returns `{ return { a: x }; }` — exempt (concise form needs wrapping parens);
+    - single-return blocks with a comment DIRECTLY at block level (intentional — see EXEMPT);
+    - ALL arrows in a `.tsx` file — a `language: TypeScript` rule does not run on `.tsx` at all
+      (ast-grep binds `.tsx` to its separate `Tsx` language), so NO `.tsx` author site fires,
+      JSX-body or not. Accepted today (0 qualifying in-scope `.tsx` sites; the psoj precedent guard
+      is likewise `.ts`-only); `.tsx` author coverage is folded into the same pending follow-up as
+      `.svelte` (a `language: Tsx` sibling and/or the ast-grep-svelte custom language — see W2).
+
+  W2 — .svelte / .tsx COVERAGE GAP, TEMPORARY (state honestly, do not paper over): a
+  `language: TypeScript` rule scans `.ts` source ONLY. It does NOT run on `.tsx` (ast-grep binds
+  `.tsx` to its separate `Tsx` language — see the note above), and ast-grep 0.42.x declares NO
+  custom `.svelte` language in sgconfig, so neither `.tsx` nor `.svelte` author sites are reached.
+  This guard therefore does NOT currently preserve the LSP rule's `.svelte`/`.tsx` author-arrow-block
+  advisory coverage. That is acceptable for `.svelte` — the LSP `.svelte` count was ~688 svelte2tsx
+  GENERATED thunks (codegen, not real debt), which no source guard should flag anyway — and for
+  `.tsx` there are 0 qualifying in-scope sites today; but this guard is a STRICT SUBSET of the LSP
+  rule's surface and is not a full-value replacement TODAY. The gap is PENDING the forthcoming
+  ast-grep-svelte custom language (in development 2026-07-16) for `.svelte`, and a `language: Tsx`
+  sibling for `.tsx`: once available, extend this guard (and the psoj prefer-schema guard) to cover
+  `.svelte`/`.tsx` source. See plan-DB roadmap/effect-lsp reference:astgrep-svelte-custom-language.
+
+  HARDEN PATH: `warning` (advisory) — verified `ast-grep scan` exits 0 on a firing `warning`
+  and 1 only on `error`, so it does not red `pnpm lint:ast`. The always-safe `return`-form
+  author surface is tiny (2 sites today), so a future promotion to `error` after burn-down is
+  cheap — but it would still only ever gate the `return`-form subset, never the 230 void sites.
+metadata:
+  enforces: "An author arrow whose block body is a single `return <expr>;` collapses to the concise expression form"
+  origin: "effect-lsp ratchet (retired 2026-07-21, plan-DB roadmap/effect-lsp); unnecessaryArrowBlock rejection 2026-07-16 (#1726)"
+rule:
+  all:
+    - kind: arrow_function
+    - has:
+        field: body
+        pattern: "{ return $BODY; }"
+    - not:
+        has:
+          field: body
+          has:
+            kind: return_statement
+            has:
+              kind: object
+# Retargeted to THIS repo's source roots during assimilation. The ported globs named
+# `apps/**`, which does not exist here: a rule scoped only to it scanned ZERO files while
+# still appearing in the corpus, which reads exactly like a rule with nothing to report.
+files:
+  - "packages/**/*.ts"
+  - "scripts/**/*.ts"
+  - "tools/**/*.ts"
+  - "__e2e__/**/*.ts"
+ignores:
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+  - "**/*.spec.tsx"
+  - "**/__tests__/**"
+  - "**/__test__/**"
+  - "**/test/**"
+  - "**/fixtures/**"

@@ -1,0 +1,84 @@
+id: no-new-promise-construction
+language: TypeScript
+severity: warning
+message: "`new Promise(...)` here constructs a raw Promise, outside Effect's typed error channel, interruption, and tracing. This is a repo-wide GROWTH-LIMITER (advisory), NOT a demand to rewrite this site now: the operator has deferred porting the ~200 existing construction sites (frontends, tools, by-design node seams, tests) to the Effect rewrite. The `ratchet` DoD gate (`pnpm exec ultravisor-dod ratchet check`) pins the current count from `scripts/ratchet-baseline.json`, so a NEW `new Promise` cannot land without raising it — if you are seeing this fail the `ratchet` gate, this is a NEW site over the ceiling. Bridge external Promise APIs with `Effect.tryPromise`/`Effect.async`; use `Effect.promise`/`Deferred` for a resolve/reject seam. If a raw Promise is genuinely required at an outside-world seam, it must OFFSET an existing site (the repo-wide count may not rise). Distinct from the error-severity `no-raw-promise` (apps/packages `.ts`, broader Promise-static family)."
+note: |
+  WHAT FIRES. A `new_expression` whose `constructor` field is the BARE identifier
+  `Promise` — matching BOTH `new Promise(...)` and generic `new Promise<T>(...)`.
+  Repo-wide, `.ts` AND `.svelte` `<script>` (via the sgconfig raw_text_js ->
+  typescript injection). NO path exemptions: browser, tools, node seams, and tests
+  ALL fire — capping growth everywhere is the point until the Effect rewrite ports
+  them.
+
+  WHY KIND-BASED, NOT `pattern: new Promise($$$ARGS)`. The naive pattern UNDER-counts
+  badly: it misses the generic form `new Promise<T>(...)` (the type_arguments break the
+  pattern). Measured in-tree: naive pattern = 71, kind-based = 201 — 130 generic sites
+  invisible to the pattern. The kind matcher anchored on the `constructor` field catches
+  both, and by construction does NOT match `new foo.Promise(...)` (constructor is a
+  member_expression `foo.Promise`), `new PromiseLike(...)` / `new Promise2(...)`
+  (identifier != `Promise`), or the `Promise.resolve()/all()/race()` statics (call, not
+  new_expression) — negative-control verified.
+
+  HONEST COUNT — NOT a "0 sites / defense-in-depth" guard. This fires on ~201 ast-grep
+  sites today (196 `.ts` + 5 `.svelte`); the retired LSP `newPromise` counted ~160
+  (153 `.ts` + 7 `.svelte`). The two denominators differ on purpose: ast-grep scans a
+  SUPERSET of the LSP's tsconfig file set (tools/, scripts/, more tests), and the svelte
+  surfaces diverge (5 vs 7) because ast-grep's raw_text_js injection and svelte-check see
+  slightly different `.svelte` sets. Unlike the globalRandom/globalConsole/globalTimers
+  replacement guards — which had an ENFORCED `*InEffect` sibling owning the in-Effect axis
+  at 0, so their guards fire on 0 real sites — `newPromise` has NO sibling. This guard
+  fires on ~200 REAL sites. Its honest value: the advisory alone only makes sites VISIBLE;
+  the `scripts/ratchet-baseline.json` pin (enforced by the `ratchet` gate under
+  `ultravisor dod` + CI, counts-may-only-decrease) is what actually LIMITS GROWTH.
+
+  RELATION TO `no-raw-promise` (`.ast-grep/rules/no-raw-promise.yml`, severity: error).
+  Different rule, different job: `no-raw-promise` targets a BROADER family (`new Promise`
+  + `Promise.all/race/allSettled/any/resolve/reject`) in a NARROWER scope (apps/packages
+  `.ts` minus tests/scripts/frontend) and uses the naive pattern (so it never sees generic
+  `new Promise<T>`). It is currently INERT (0 findings repo-wide — an ast-grep 0.42.2
+  `files:`+long-`ignores:` over-suppression; a separate operator-gated follow-up owns the
+  fix, coupled with the Effect rewrite). THIS guard is the repo-wide `warning` growth-
+  limiter on `new Promise` CONSTRUCTION specifically, kind-based (catches generics), pinned
+  by the ratchet. They coexist; neither subsumes the other. Do NOT read this guard as a
+  replacement for `no-raw-promise`.
+
+  BOUNDED GAPS — inherent to ast-grep's syntactic nature; each is a SAFE-DIRECTION miss
+  (undercount, never a false positive), reads as deliberate evasion, and is strictly more
+  work than a plain `new Promise`:
+    a. ALIASED constructor binding: `const P = Promise; new P(...)`, or destructured
+       `const { Promise: P } = globalThis; new P(...)`. The `constructor` field is the
+       identifier `P`, not `Promise`; ast-grep cannot follow the binding. SILENT.
+    b. DYNAMIC/COMPUTED constructor: `new (getCtor())(...)`. SILENT (exotic).
+    c. `.tsx`: `language: TypeScript` covers `.ts`/`.mts`/`.cts` + `.svelte` via injection,
+       NOT `.tsx` (ast-grep binds `.tsx` to its separate `Tsx` language). Grep-verified 0
+       `.tsx` `new Promise` sites in-tree today — a bounded-EMPTY gap, same class as the
+       globalTimers note (b). If a `.tsx` site ever appears, add a `language: Tsx` sibling
+       rule.
+  NOTE — unlike the globalTimers guard, there are NO matcher-precision EXEMPTIONS that
+  suppress genuine `new Promise` sites: the operator wants full visibility. The only
+  silences above are things that are NOT a bare `new Promise` construction (aliased/
+  computed/member-different-ctor).
+
+  WHY `warning`, NOT `error`. `pnpm lint:ast` is a bare `ast-grep scan`; an error-severity
+  finding exits 1 (hard gate), a warning exits 0 (advisory). An `error` on ~201 real sites
+  would red `lint:ast` and force the very frontend/tools churn the operator deferred. The
+  growth ceiling is enforced by the `ratchet` gate (counts-may-only-decrease), NOT by
+  lint:ast severity. There is NO harden-to-error burn-down path here: the sites are ported
+  off raw Promises by the operator's Effect rewrite, and the ceiling ratchets DOWN as they
+  land.
+
+  See the plan-DB roadmap/effect-lsp record (Rejected rules -> newPromise) and the plan store
+  roadmap/effect-lsp key arch-newpromise-design. Hostile-input proof:
+  .ast-grep/tests/no-new-promise-construction-test.yml (native, rule LOGIC) and
+  .ast-grep/tests/no-new-promise-construction.injection.test.ts (bun; proves the .svelte
+  injection is non-vacuous, no path exemption, and the aliased/member/computed gaps are
+  silent by construction).
+rule:
+  kind: new_expression
+  has:
+    field: constructor
+    regex: '^Promise$'
+# ignores: (INTENTIONALLY ABSENT — see note "WHY NO PATH EXEMPTION"; the growth ceiling is repo-wide)
+metadata:
+  enforces: "No NET-new raw `new Promise(...)` construction anywhere in the repo; async control flow goes through Effect (Effect.tryPromise/async/promise/Deferred). Advisory growth-limiter; the ratchet baseline caps the count until the Effect rewrite ports existing sites."
+  origin: "effect-lsp ratchet (retired 2026-07-21, plan-DB roadmap/effect-lsp); newPromise reject-and-replace"
