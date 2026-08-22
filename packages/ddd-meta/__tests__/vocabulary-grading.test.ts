@@ -34,6 +34,15 @@ const LAYER_ONLY_VOCABULARY: Vocabulary = {
 };
 
 describe('the package ships the vocabulary type and zero members', () => {
+  it('pins the field-to-source map by content, so a rewired field cannot pass unnoticed', () => {
+    expect(VOCABULARY_SOURCE_OF).toEqual({
+      l: 'layer',
+      p: 'pattern',
+      subdomain: 'subdomain',
+      tier: 'tier',
+    });
+  });
+
   it('declares an empty member list for every vocabulary source', () => {
     for (const field of VOCABULARY_FIELDS) {
       const source = VOCABULARY_SOURCE_OF[field];

@@ -57,6 +57,100 @@ export const MACHINE_READ_DIRECTIVES: readonly string[] = [
 export const containsMachineReadDirective = (text: string): boolean =>
   MACHINE_READ_DIRECTIVES.some((directive) => text.includes(directive));
 
+export type DirectiveScope = 'file' | 'next_line';
+
+export const PREAMBLE_SCOPE_RULE = `A machine-read directive is preamble only when consuming it cannot DETACH it from what it governs.
+
+A file-scoped directive governs the whole file, so the block may be written below it. A next-line
+directive governs the line that FOLLOWS it, so consuming it puts the block between the suppression and
+its target: the suppressed diagnostic returns, and for @ts-expect-error a second error appears because
+the now-pointless directive is itself TS2578. A next-line directive therefore STOPS the preamble and
+the block is written ABOVE it.
+
+Scope is read by LONGEST MATCHING TOKEN, not by first match, because two spellings are extensions of
+their opposite: biome-ignore-all is file-scoped and contains the next-line token biome-ignore, while
+eslint-disable-next-line is next-line-scoped and contains the file-scoped token eslint-disable. First
+match would misclassify both, and biome-ignore-all is the live population — 47 real files across the
+migration targets open with it.
+
+A directive that governs its OWN line, such as noqa or a Python type: ignore, is file-scoped for this
+purpose: nothing is written between it and itself, so consuming it detaches nothing.
+
+The table is held in LEXICOGRAPHIC order, deliberately, so that its ORDER carries no protection. Both
+prefix pairs therefore sit with the shorter token FIRST, which is the order in which a first-match
+classifier gets both of them WRONG. Longest match is consequently load-bearing rather than merely
+correct, and a test can tell the two rules apart. An ordering that happened to put the extensions first
+would protect the live population by accident and leave the rule untested.`;
+
+export const DIRECTIVE_SCOPES: readonly (readonly [string, DirectiveScope])[] = [
+  ['-*- coding', 'file'],
+  ['/// <reference', 'file'],
+  ['@flow', 'file'],
+  ['@jsx', 'file'],
+  ['@license', 'file'],
+  ['@ts-expect-error', 'next_line'],
+  ['@ts-ignore', 'next_line'],
+  ['@ts-nocheck', 'file'],
+  ['SPDX-License-Identifier', 'file'],
+  ['ast-grep-ignore', 'next_line'],
+  ['biome-ignore', 'next_line'],
+  ['biome-ignore-all', 'file'],
+  ['clippy::', 'file'],
+  ['eslint-disable', 'file'],
+  ['eslint-disable-next-line', 'next_line'],
+  ['eslint-enable', 'file'],
+  ['mypy:', 'file'],
+  ['noqa', 'file'],
+  ['prettier-ignore', 'next_line'],
+  ['pylint:', 'file'],
+  ['ruff:', 'file'],
+  ['rustfmt::skip', 'next_line'],
+  ['shellcheck', 'file'],
+  ['svelte-ignore', 'next_line'],
+  ['type: ignore', 'file'],
+];
+
+export const directiveScopeOf = (text: string): DirectiveScope | undefined => {
+  let matched: readonly [string, DirectiveScope] | undefined;
+  for (const entry of DIRECTIVE_SCOPES) {
+    const longer = matched === undefined || entry[0].length > matched[0].length;
+    if (longer && text.includes(entry[0])) matched = entry;
+  }
+  return matched === undefined ? undefined : matched[1];
+};
+
+export const YAML_FENCE = '---';
+
+export const YAML_FENCE_RULE = `A Markdown YAML front-matter fence is preamble, and the block goes BELOW it.
+
+Every consumer of YAML front matter requires the fence to be the first thing in the file. Writing
+above it does not break any parser and produces no syntax error anywhere; the file simply stops
+having front matter. Measured at 840 real files across the two migration targets, including every
+.claude/agents/**/*.md in both, whose name and model keys are how the harness registers an agent.
+
+The fence is only a fence when it CLOSES. A leading --- with no closing --- below it is ordinary
+content, so it does not open a preamble and the previous behaviour stands. That guard is what keeps
+a document that merely starts with a horizontal rule from silently acquiring a preamble it has not
+got.
+
+The CLOSING fence must sit at column 0, which is what YAML requires of it. An INDENTED --- is content
+inside a block scalar, and accepting one ends the scan early: the block is then spliced into the middle
+of the front matter, where its column-0 open terminates the scalar and destroys the YAML. The opening
+line keeps the looser trim, because a document whose first line is an indented --- is not front matter
+under any reading and the scan declines it anyway.`;
+
+export const isYamlFenceLine = (line: string): boolean => line.trim() === YAML_FENCE;
+
+export const isYamlCloseFenceLine = (line: string): boolean => line.trimEnd() === YAML_FENCE;
+
+export const yamlFrontMatterEnd = (lines: readonly string[]): number => {
+  if (lines.length === 0 || !isYamlFenceLine(lines[0])) return -1;
+  for (let index = 1; index < lines.length; index += 1) {
+    if (isYamlCloseFenceLine(lines[index])) return index;
+  }
+  return -1;
+};
+
 export const SHEBANG_PREFIX = '#!';
 
 export const RUST_INNER_ATTRIBUTE_PREFIX = '#![';
@@ -115,11 +209,15 @@ const advancePreamble = (carrier: Carrier, lines: readonly string[], scan: Pream
   if (scan.index === 0 && isShebangLine(line)) return consumed;
   if (isRustInnerAttributeLine(line)) return consumed;
   if (carrier.name === 'xml' && isXmlPreambleLine(line)) return consumed;
+  if (carrier.name === 'xml' && scan.index === 0) {
+    const fenceEnd = yamlFrontMatterEnd(lines);
+    if (fenceEnd !== -1) return { index: fenceEnd + 1, blankRunStart: -1, stopped: false };
+  }
   if (isFrontMatterOpenLine(carrier, line)) return { ...scan, stopped: true };
   const spanEnd = commentSpanEnd(carrier, lines, scan.index);
   if (spanEnd === -1) return { ...scan, stopped: true };
   const spanText = joinLines(lines.slice(scan.index, spanEnd + 1), LF);
-  if (!containsMachineReadDirective(spanText)) return { ...scan, stopped: true };
+  if (directiveScopeOf(spanText) !== 'file') return { ...scan, stopped: true };
   return { index: spanEnd + 1, blankRunStart: -1, stopped: false };
 };
 

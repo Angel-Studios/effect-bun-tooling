@@ -38,11 +38,18 @@ const POLICY_WITH_AN_UNOWNED_JSON: ExclusionPolicy = {
   unownedBasenames: [...DEFAULT_EXCLUSION_POLICY.unownedBasenames, 'thing.json'],
 };
 
-const PRECEDENCE_PROBE_PATHS: readonly string[] = [
-  'vendor/dist/thing.json',
-  'dist/thing.json',
-  'thing.json',
-  'other.json',
+const PRECEDENCE_PROBE_POLICY: ExclusionPolicy = {
+  ...DEFAULT_EXCLUSION_POLICY,
+  unownedBasenames: [...DEFAULT_EXCLUSION_POLICY.unownedBasenames, 'thing.xml'],
+  commentIncapableExtensions: [...DEFAULT_EXCLUSION_POLICY.commentIncapableExtensions, '.xml'],
+};
+
+const PRECEDENCE_PROBES: readonly (readonly [string, ExclusionPolicy])[] = [
+  ['vendor/dist/thing.xml', PRECEDENCE_PROBE_POLICY],
+  ['dist/thing.xml', PRECEDENCE_PROBE_POLICY],
+  ['thing.xml', PRECEDENCE_PROBE_POLICY],
+  ['other.xml', PRECEDENCE_PROBE_POLICY],
+  ['other.xml', DEFAULT_EXCLUSION_POLICY],
 ];
 
 describe('an exclusion is a typed terminal, never a failure', () => {
@@ -56,7 +63,7 @@ describe('an exclusion is a typed terminal, never a failure', () => {
 
   it('parses a carried file rather than short-circuiting it', () => {
     const carriedText = fixtureText('cases/carried.xml.fixture');
-    const outcome = successOf(readFrontMatter('components/carried.xml', carriedText));
+    const outcome = successOf(readFrontMatter('components/carried.html', carriedText));
     expect(outcome).toMatchObject({ _tag: 'FrontMatter', carrier: 'xml' });
   });
 
@@ -83,7 +90,7 @@ describe('the pinned corpus of paths classifies as the record claims', () => {
 
 describe('a path rule beats an extension rule, in the declared precedence order', () => {
   it('derives the precedence order from behaviour and finds the declared order', () => {
-    const observed = PRECEDENCE_PROBE_PATHS.map((path) => reasonOf(path, POLICY_WITH_AN_UNOWNED_JSON));
+    const observed = PRECEDENCE_PROBES.map((probe) => reasonOf(probe[0], probe[1]));
     expect(observed).toEqual([...EXCLUSION_PRECEDENCE]);
   });
 
@@ -172,6 +179,81 @@ describe('the path primitives behave as the classifier assumes', () => {
 });
 
 describe('the exclusion policy is declared data decoded through Effect Schema', () => {
+  it('pins every list in the shipped default by content, so no member can drift unnoticed', () => {
+    expect(DEFAULT_EXCLUSION_POLICY).toEqual({
+      carrierExtensions: {
+        block: [
+          '.ts',
+          '.tsx',
+          '.js',
+          '.jsx',
+          '.mjs',
+          '.cjs',
+          '.mts',
+          '.cts',
+          '.rs',
+          '.swift',
+          '.kt',
+          '.kts',
+          '.c',
+          '.cc',
+          '.cpp',
+          '.h',
+          '.hpp',
+          '.css',
+          '.scss',
+        ],
+        hash: ['.ex', '.exs', '.py', '.sh', '.bash', '.zsh', '.toml', '.yml', '.yaml'],
+        apostrophe: ['.brs'],
+        xml: ['.html', '.htm', '.md', '.svelte', '.vue'],
+      },
+      commentIncapableExtensions: [
+        '.json',
+        '.png',
+        '.jpg',
+        '.jpeg',
+        '.gif',
+        '.ico',
+        '.otf',
+        '.ttf',
+        '.woff',
+        '.woff2',
+        '.jar',
+        '.class',
+        '.pem',
+        '.pbf',
+        '.zip',
+        '.tgz',
+        '.bin',
+        '.so',
+        '.dylib',
+        '.dll',
+      ],
+      commentIncapableBasenames: ['LICENSE', 'NOTICE'],
+      carrierNotExpressibleExtensions: ['.xml', '.svg'],
+      generatedBasenames: [
+        'bun.lock',
+        'package-lock.json',
+        'yarn.lock',
+        'pnpm-lock.yaml',
+        'Cargo.lock',
+        'gradle.lockfile',
+      ],
+      generatedSegments: [
+        'dist',
+        'build',
+        'target',
+        'out',
+        'node_modules',
+        '.svelte-kit',
+        'generated',
+        '__generated__',
+      ],
+      vendoredSegments: ['vendor', 'vendored', 'third_party', 'third-party', 'Pods', 'externals'],
+      unownedBasenames: ['.gitignore', '.gitattributes', '.dockerignore', '.npmrc', '.editorconfig'],
+    });
+  });
+
   it('decodes the shipped default without changing it', () => {
     expect(policyOf(DEFAULT_EXCLUSION_POLICY)).toEqual(DEFAULT_EXCLUSION_POLICY);
   });
@@ -197,6 +279,7 @@ describe('the exclusion policy is declared data decoded through Effect Schema', 
       carrierExtensions: { block: [], hash: [], apostrophe: [], xml: [] },
       commentIncapableExtensions: [],
       commentIncapableBasenames: [],
+      carrierNotExpressibleExtensions: [],
       generatedBasenames: [],
       generatedSegments: [],
       vendoredSegments: [],

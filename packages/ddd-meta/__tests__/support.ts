@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import * as Result from 'effect/Result';
 import type { CarrierName } from '../src/carrier.ts';
 import type { FrontMatter } from '../src/schema.ts';
@@ -9,6 +9,19 @@ export const FIXTURE_ROOT = join(import.meta.dir, 'fixtures');
 export const PACKAGE_ROOT = join(import.meta.dir, '..');
 
 export const fixtureText = (relative: string): string => readFileSync(join(FIXTURE_ROOT, relative), 'utf8');
+
+export const REPO_ROOT_MARKERS: readonly string[] = ['bun.lock', '.git'];
+
+export const repoRoot = (): string => {
+  let directory = import.meta.dir;
+  for (;;) {
+    if (REPO_ROOT_MARKERS.some((marker) => existsSync(join(directory, marker)))) return directory;
+    const parent = dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  throw new Error(`could not locate the repo root by walking up from ${import.meta.dir}`);
+};
 
 export const successOf = <A, E>(result: Result.Result<A, E>): A => {
   if (Result.isFailure(result)) {
@@ -47,7 +60,7 @@ export const ROUND_TRIP_FIXTURE_OF: Readonly<Record<CarrierName, string>> = {
   block: 'block/sweep.ts.fixture',
   hash: 'hash/bunfig.toml.fixture',
   apostrophe: 'apostrophe/AttachButton.brs.fixture',
-  xml: 'xml/LoginModalComponent.xml.fixture',
+  xml: 'xml/Counter.svelte.fixture',
 };
 
 export const threwOf = (thunk: () => unknown): boolean => {

@@ -24,7 +24,7 @@ import {
   renderTomlValue,
   upsertFrontMatter,
 } from '../src/write.ts';
-import { REAL_FIXTURES } from './fixtures/provenance.ts';
+import { CARRIED_REAL_FIXTURES, REAL_FIXTURES } from './fixtures/provenance.ts';
 import {
   CANONICAL_PAYLOAD,
   failureOf,
@@ -66,7 +66,7 @@ describe('upsert is idempotent, byte for byte, on every carrier', () => {
     });
   }
 
-  for (const provenance of REAL_FIXTURES) {
+  for (const provenance of CARRIED_REAL_FIXTURES) {
     it(`writes the same bytes twice into ${provenance.fixture}`, () => {
       const once = upsertInto(fixtureText(provenance.fixture), provenance.carrier, CANONICAL_PAYLOAD);
       expect(upsertInto(once, provenance.carrier, CANONICAL_PAYLOAD)).toBe(once);
@@ -184,14 +184,16 @@ describe('the writer refuses rather than guessing when the file is already wrong
 describe('the rendered payload is canonical, and canonical is what the reader accepts', () => {
   it('emits the registry order whatever order the value was built in', () => {
     const keysOf = (value: FrontMatter): readonly string[] =>
-      renderPayloadLines(value).map((line) => line.slice(0, line.indexOf(' =')));
+      successOf(renderPayloadLines(value)).map((line) => line.slice(0, line.indexOf(' =')));
     expect(keysOf(CANONICAL_PAYLOAD)).toEqual(REGISTRY_KEYS);
     expect(keysOf(REVERSED_PAYLOAD)).toEqual(REGISTRY_KEYS);
   });
 
   it('emits only the fields the value carries, still in registry order', () => {
-    expect(renderPayloadLines(SECOND_PAYLOAD)).toEqual(['l = "application"', 'owner = "other_team"']);
-    expect(renderPayloadLines({})).toEqual([]);
+    const second = successOf(renderPayloadLines(SECOND_PAYLOAD));
+    const none = successOf(renderPayloadLines({}));
+    expect(second).toEqual(['l = "application"', 'owner = "other_team"']);
+    expect(none).toEqual([]);
   });
 
   it('sorts and dedupes a list, and sorts a table by key', () => {
@@ -217,7 +219,7 @@ describe('the rendered payload is canonical, and canonical is what the reader ac
   it('never emits a payload line that reopens or closes the carrier comment', () => {
     for (const carrierName of CARRIER_NAMES) {
       const carrier = carrierOf(carrierName);
-      const lines = renderFrontMatterLines(CANONICAL_PAYLOAD, carrierName);
+      const lines = successOf(renderFrontMatterLines(CANONICAL_PAYLOAD, carrierName));
       expect(lines[0]).toBe(carrier.open);
       expect(lines[lines.length - 1]).toBe(carrier.close);
       for (const line of lines.slice(1, -1)) {
@@ -230,16 +232,16 @@ describe('the rendered payload is canonical, and canonical is what the reader ac
   it('prefixes every payload line for the carriers that need one, and none for the rest', () => {
     for (const carrierName of CARRIER_NAMES) {
       const carrier = carrierOf(carrierName);
-      const body = renderFrontMatterLines(CANONICAL_PAYLOAD, carrierName).slice(1, -1);
+      const body = successOf(renderFrontMatterLines(CANONICAL_PAYLOAD, carrierName)).slice(1, -1);
       expect(body.length).toBe(FIELD_REGISTRY.length);
       for (const line of body) expect(line.startsWith(carrier.linePrefix)).toBe(true);
     }
   });
 
   it('joins the rendered block with the line ending it was handed', () => {
-    expect(renderFrontMatter(SECOND_PAYLOAD, 'hash', CRLF)).toBe(
-      '# ---uv\r\n# l = "application"\r\n# owner = "other_team"\r\n# ---',
-    );
-    expect(renderFrontMatter(SECOND_PAYLOAD, 'hash', LF).includes(CRLF)).toBe(false);
+    const crlf = successOf(renderFrontMatter(SECOND_PAYLOAD, 'hash', CRLF));
+    const lf = successOf(renderFrontMatter(SECOND_PAYLOAD, 'hash', LF));
+    expect(crlf).toBe('# ---uv\r\n# l = "application"\r\n# owner = "other_team"\r\n# ---');
+    expect(lf.includes(CRLF)).toBe(false);
   });
 });

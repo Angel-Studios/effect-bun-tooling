@@ -5,6 +5,8 @@ import { parseFrontMatter } from '../src/parse.ts';
 import {
   commentSpanEnd,
   containsMachineReadDirective,
+  DIRECTIVE_SCOPES,
+  directiveScopeOf,
   frontMatterCloseIndex,
   frontMatterOpenIndices,
   isBlankLine,
@@ -147,10 +149,65 @@ describe('a machine-read directive is preamble, and prose is not', () => {
     ]);
   });
 
+  it('pins every scope assignment by literal content, independently of the classifier', () => {
+    expect(DIRECTIVE_SCOPES).toEqual([
+      ['-*- coding', 'file'],
+      ['/// <reference', 'file'],
+      ['@flow', 'file'],
+      ['@jsx', 'file'],
+      ['@license', 'file'],
+      ['@ts-expect-error', 'next_line'],
+      ['@ts-ignore', 'next_line'],
+      ['@ts-nocheck', 'file'],
+      ['SPDX-License-Identifier', 'file'],
+      ['ast-grep-ignore', 'next_line'],
+      ['biome-ignore', 'next_line'],
+      ['biome-ignore-all', 'file'],
+      ['clippy::', 'file'],
+      ['eslint-disable', 'file'],
+      ['eslint-disable-next-line', 'next_line'],
+      ['eslint-enable', 'file'],
+      ['mypy:', 'file'],
+      ['noqa', 'file'],
+      ['prettier-ignore', 'next_line'],
+      ['pylint:', 'file'],
+      ['ruff:', 'file'],
+      ['rustfmt::skip', 'next_line'],
+      ['shellcheck', 'file'],
+      ['svelte-ignore', 'next_line'],
+      ['type: ignore', 'file'],
+    ]);
+  });
+
+  it('holds the table in lexicographic order, so its ORDER protects nothing', () => {
+    const tokens = DIRECTIVE_SCOPES.map((entry) => entry[0]);
+    expect(tokens).toEqual([...tokens].sort());
+    expect(tokens.indexOf('biome-ignore')).toBeLessThan(tokens.indexOf('biome-ignore-all'));
+    expect(tokens.indexOf('eslint-disable')).toBeLessThan(tokens.indexOf('eslint-disable-next-line'));
+  });
+
+  it('covers every recognised directive, and adds only extensions of a covered one', () => {
+    const tokens = DIRECTIVE_SCOPES.map((entry) => entry[0]);
+    for (const directive of MACHINE_READ_DIRECTIVES) expect(tokens).toContain(directive);
+    const extras = tokens.filter((token) => !MACHINE_READ_DIRECTIVES.includes(token));
+    for (const extra of extras) {
+      const covering = MACHINE_READ_DIRECTIVES.filter((directive) => extra.startsWith(directive));
+      expect(`${extra} extends: ${covering.length > 0}`).toBe(`${extra} extends: true`);
+    }
+    expect(extras).toEqual(['biome-ignore-all', 'eslint-disable-next-line']);
+  });
+
   for (const directive of MACHINE_READ_DIRECTIVES) {
-    it(`treats a leading comment carrying ${JSON.stringify(directive)} as preamble`, () => {
+    const scope = directiveScopeOf(`// ${directive} trailing text`);
+    const asPreamble = scope === 'file';
+    it(`treats a leading comment carrying ${JSON.stringify(directive)} as a ${scope} directive`, () => {
       expect(containsMachineReadDirective(`// ${directive} trailing text`)).toBe(true);
-      expect(openingLineOf(`// ${directive}\n/* ---uv\n${BLOCK_BODY}`, 'block')).toBe(2);
+      expect(scope).toBeDefined();
+      if (asPreamble) {
+        expect(openingLineOf(`// ${directive}\n/* ---uv\n${BLOCK_BODY}`, 'block')).toBe(2);
+      } else {
+        expect(misplacedLineOf(`// ${directive}\n/* ---uv\n${BLOCK_BODY}`, 'block')).toBe(2);
+      }
     });
   }
 
@@ -182,7 +239,9 @@ describe('the preamble scan never swallows the front matter it is scanning for',
   });
 
   it('keeps that carve-out under a preamble, where the scan is already running', () => {
-    expect(openingLineOf('// biome-ignore lint: x\n/* ---uv\ntags = ["noqa"]\n--- */\n', 'block')).toBe(2);
+    expect(openingLineOf('// biome-ignore-all lint: x\n/* ---uv\ntags = ["noqa"]\n--- */\n', 'block')).toBe(
+      2,
+    );
   });
 });
 

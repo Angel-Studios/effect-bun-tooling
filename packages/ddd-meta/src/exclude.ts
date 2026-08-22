@@ -5,11 +5,30 @@ import { type ExclusionPolicyDecodeError, exclusionPolicyDecodeError } from './e
 
 export const EXCLUSION_REASONS = [
   'comment_incapable',
+  'carrier_not_expressible',
   'generated',
   'vendored',
   'unowned',
   'no_carrier_declared',
 ] as const;
+
+export const CARRIER_NOT_EXPRESSIBLE_RULE = `An .xml or .svg file is EXCLUDED because the ratified fence cannot be written as an XML comment.
+
+XML 1.0 section 2.5 gives Comment ::= '<!--' ((Char - '-') | ('-' (Char - '-')))* '-->', so the string
+-- must not occur inside comment content. The xml carrier opens '<!-- ---uv' and closes '--- -->',
+which puts -- in the content at the FIRST fence, before any payload is written. Two conforming parsers
+agree: libxml2 reports "Double hyphen within comment" and expat reports "not well-formed (invalid
+token)". It fires on 100% of writes with the canonical payload; no adversarial input is involved.
+
+This is a statement about the FENCE SPELLING, not about XML metadata being impossible. The candidate
+fix is a processing instruction, <?uv ... ?>, which is legal by construction and carries no hyphen
+restriction at all; it is a change to the ratified ---uv token that other work already binds to, so it
+awaits ratification rather than being made here. Until then the honest verdict is that the format
+cannot carry these files, and an excluded terminal is how this package says so.
+
+The exclusion is scoped to the hosts that actually reject it. .html, .htm, .md, .svelte and .vue stay
+on the xml carrier: the HTML5 tokenizer and CommonMark 0.30 and later both tolerate -- inside a
+comment, so the same fence is well-formed there.`;
 
 export type ExclusionReason = (typeof EXCLUSION_REASONS)[number];
 
@@ -25,7 +44,13 @@ export type Excluded = {
 
 export type Classification = Carried | Excluded;
 
-export const EXCLUSION_PRECEDENCE = ['vendored', 'generated', 'unowned', 'comment_incapable'] as const;
+export const EXCLUSION_PRECEDENCE = [
+  'vendored',
+  'generated',
+  'unowned',
+  'comment_incapable',
+  'carrier_not_expressible',
+] as const;
 
 export const carried = (carrier: CarrierName): Carried => ({ _tag: 'Carried', carrier });
 
@@ -42,6 +67,7 @@ export const ExclusionPolicySchema = Schema.Struct({
   }),
   commentIncapableExtensions: StringList,
   commentIncapableBasenames: StringList,
+  carrierNotExpressibleExtensions: StringList,
   generatedBasenames: StringList,
   generatedSegments: StringList,
   vendoredSegments: StringList,
@@ -75,7 +101,7 @@ export const DEFAULT_EXCLUSION_POLICY: ExclusionPolicy = {
     ],
     hash: ['.ex', '.exs', '.py', '.sh', '.bash', '.zsh', '.toml', '.yml', '.yaml'],
     apostrophe: ['.brs'],
-    xml: ['.xml', '.html', '.htm', '.md', '.svelte', '.svg', '.vue'],
+    xml: ['.html', '.htm', '.md', '.svelte', '.vue'],
   },
   commentIncapableExtensions: [
     '.json',
@@ -100,6 +126,7 @@ export const DEFAULT_EXCLUSION_POLICY: ExclusionPolicy = {
     '.dll',
   ],
   commentIncapableBasenames: ['LICENSE', 'NOTICE'],
+  carrierNotExpressibleExtensions: ['.xml', '.svg'],
   generatedBasenames: [
     'bun.lock',
     'package-lock.json',
@@ -179,6 +206,9 @@ export const classifyPath = (
   if (policy.unownedBasenames.includes(basename)) return excluded('unowned');
   if (policy.commentIncapableBasenames.includes(basename)) return excluded('comment_incapable');
   if (policy.commentIncapableExtensions.includes(extension)) return excluded('comment_incapable');
+  if (policy.carrierNotExpressibleExtensions.includes(extension)) {
+    return excluded('carrier_not_expressible');
+  }
 
   const carrier = carrierForExtension(extension, policy);
   return carrier === undefined ? excluded('no_carrier_declared') : carried(carrier);

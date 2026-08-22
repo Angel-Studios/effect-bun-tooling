@@ -138,6 +138,12 @@ export const REAL_FIXTURES: readonly FixtureProvenance[] = [
   },
 ];
 
+export const NOT_EXPRESSIBLE_EXTENSIONS: readonly string[] = ['.xml', '.svg'];
+
+export const CARRIED_REAL_FIXTURES: readonly FixtureProvenance[] = REAL_FIXTURES.filter(
+  (provenance) => !NOT_EXPRESSIBLE_EXTENSIONS.some((ext) => provenance.classifierPath.endsWith(ext)),
+);
+
 export type CaseOutcome =
   | 'FrontMatter'
   | 'NoFrontMatter'
@@ -237,6 +243,13 @@ export const CASE_FIXTURES: readonly CaseFixture[] = [
     expectedLine: 2,
   },
   {
+    fixture: 'cases/yaml-block-scalar.md.fixture',
+    carrier: 'xml',
+    classifierPath: 'docs/yaml-block-scalar.md',
+    expected: 'NoFrontMatter',
+    expectedLine: 0,
+  },
+  {
     fixture: 'cases/no-front-matter.md.fixture',
     carrier: 'xml',
     classifierPath: 'docs/no-front-matter.md',
@@ -269,6 +282,8 @@ export const EXCLUDED_PATHS: readonly ExcludedPathExpectation[] = [
   { path: 'package.json', reason: 'comment_incapable' },
   { path: 'LICENSE', reason: 'comment_incapable' },
   { path: 'assets/logo.png', reason: 'comment_incapable' },
+  { path: 'components/LoginModal.xml', reason: 'carrier_not_expressible' },
+  { path: 'assets/icon.svg', reason: 'carrier_not_expressible' },
   { path: 'Makefile', reason: 'no_carrier_declared' },
   { path: 'docs/notes', reason: 'no_carrier_declared' },
 ];

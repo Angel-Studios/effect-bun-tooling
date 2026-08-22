@@ -60,7 +60,7 @@ hash = "382b27049190745f5689daddeb52bcc0bedbe3dc52bf4a9275fd665813af8729"
 
 [[contractFingerprints]]
 path = ".toolplane/config.toml"
-hash = "a4baab15d9ecd82a37bc07926d17e9b47dc2dabfac3c5511ebc786e98686ab86"
+hash = "8de217cb2e9e16ca93ae394f623f09e01d4e0c7e151c5b22e17cb016623dc3a5"
 
 [[contractFingerprints]]
 path = ".toolplane/gates.toml"

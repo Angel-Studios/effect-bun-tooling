@@ -17,7 +17,7 @@ import { REGISTRY_KEYS } from '../src/registry.ts';
 import type { FrontMatter } from '../src/schema.ts';
 import { detectEol, joinLines, splitLines } from '../src/sentinel.ts';
 import { renderFrontMatter, upsertFrontMatter } from '../src/write.ts';
-import { REAL_FIXTURES } from './fixtures/provenance.ts';
+import { CARRIED_REAL_FIXTURES } from './fixtures/provenance.ts';
 import { CANONICAL_PAYLOAD, fixtureText, ROUND_TRIP_FIXTURE_OF, successOf } from './support.ts';
 
 const carriedBlockOf = (text: string, carrierName: CarrierName): FrontMatterBlock => {
@@ -50,6 +50,43 @@ describe('the four carriers are one sentinel wearing four comment syntaxes', () 
       expect(carrier.close).toContain(SENTINEL_TERMINATOR);
       expect(carrier.name).toBe(carrierName);
     }
+  });
+
+  it('pins every carrier by content, so no delimiter or leader can drift unnoticed', () => {
+    expect(CARRIERS).toEqual({
+      block: {
+        name: 'block',
+        open: '/* ---uv',
+        linePrefix: '',
+        close: '--- */',
+        lineCommentLeaders: ['//'],
+        blockComment: { open: '/*', close: '*/', nests: true },
+      },
+      hash: {
+        name: 'hash',
+        open: '# ---uv',
+        linePrefix: '# ',
+        close: '# ---',
+        lineCommentLeaders: ['#'],
+        blockComment: undefined,
+      },
+      apostrophe: {
+        name: 'apostrophe',
+        open: "' ---uv",
+        linePrefix: "' ",
+        close: "' ---",
+        lineCommentLeaders: ["'"],
+        blockComment: undefined,
+      },
+      xml: {
+        name: 'xml',
+        open: '<!-- ---uv',
+        linePrefix: '',
+        close: '--- -->',
+        lineCommentLeaders: [],
+        blockComment: { open: '<!--', close: '-->', nests: false },
+      },
+    });
   });
 
   it('gives each carrier a distinct opening line, so a file cannot match two at once', () => {
@@ -118,7 +155,7 @@ describe('one identical payload survives all four carriers', () => {
 
   it('renders the block alone, with no trailing line ending', () => {
     for (const carrierName of CARRIER_NAMES) {
-      const rendered = renderFrontMatter(CANONICAL_PAYLOAD, carrierName, '\n');
+      const rendered = successOf(renderFrontMatter(CANONICAL_PAYLOAD, carrierName, '\n'));
       expect(rendered.startsWith(carrierOf(carrierName).open)).toBe(true);
       expect(rendered.endsWith(carrierOf(carrierName).close)).toBe(true);
       expect(splitLines(rendered).length).toBe(REGISTRY_KEYS.length + 2);
@@ -127,7 +164,7 @@ describe('one identical payload survives all four carriers', () => {
 });
 
 describe('every real per-language fixture carries the payload through its own carrier', () => {
-  for (const provenance of REAL_FIXTURES) {
+  for (const provenance of CARRIED_REAL_FIXTURES) {
     it(`writes and reads the canonical payload in ${provenance.fixture}`, () => {
       const written = writeInto(provenance.fixture, provenance.carrier, CANONICAL_PAYLOAD);
       expect(carriedBlockOf(written, provenance.carrier).value).toEqual(CANONICAL_PAYLOAD);

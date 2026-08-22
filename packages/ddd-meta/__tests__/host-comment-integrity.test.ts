@@ -43,7 +43,7 @@ const BLOCK_COMMENT_CARRIERS: readonly (readonly [CarrierName, BlockCommentDelim
 const LINE_COMMENT_CARRIERS: readonly CarrierName[] = ['hash', 'apostrophe'];
 
 const bodyLinesOf = (value: FrontMatter, carrierName: CarrierName): readonly string[] =>
-  renderFrontMatterLines(value, carrierName).slice(1, -1);
+  successOf(renderFrontMatterLines(value, carrierName)).slice(1, -1);
 
 const strippedBodyOf = (value: FrontMatter, carrierName: CarrierName): readonly string[] => {
   const carrier = carrierOf(carrierName);
@@ -67,7 +67,9 @@ describe('an escaped payload preserves the value it was handed, on every carrier
   for (const carrierName of CARRIER_NAMES) {
     for (const [label, value] of TERMINATOR_CASES) {
       it(`reads back ${label} deep-equal through the ${carrierName} carrier`, () => {
-        expect(valueReadBack(renderFrontMatter(value, carrierName, LF), carrierName)).toEqual(value);
+        expect(valueReadBack(successOf(renderFrontMatter(value, carrierName, LF)), carrierName)).toEqual(
+          value,
+        );
       });
     }
   }
@@ -159,9 +161,8 @@ describe('a hand-authored payload line that moves the host comment end is refuse
 describe('the close fence carries the terminator by construction and must never trip the guard', () => {
   for (const carrierName of CARRIER_NAMES) {
     it(`accepts a well-formed ${carrierName} block whatever its own fences contain`, () => {
-      expect(valueReadBack(renderFrontMatter(CANONICAL_PAYLOAD, carrierName, LF), carrierName)).toEqual(
-        CANONICAL_PAYLOAD,
-      );
+      const rendered = successOf(renderFrontMatter(CANONICAL_PAYLOAD, carrierName, LF));
+      expect(valueReadBack(rendered, carrierName)).toEqual(CANONICAL_PAYLOAD);
     });
   }
 
@@ -170,7 +171,8 @@ describe('the close fence carries the terminator by construction and must never 
       const carrier = carrierOf(carrierName);
       expect(carrier.blockComment).toEqual(delimiters);
       expect(carrier.close).toContain(delimiters.close);
-      const lines = splitLines(renderFrontMatter(CANONICAL_PAYLOAD, carrierName, LF));
+      const block = successOf(renderFrontMatter(CANONICAL_PAYLOAD, carrierName, LF));
+      const lines = splitLines(block);
       expect(lines[lines.length - 1]).toBe(carrier.close);
     });
   }
@@ -196,7 +198,7 @@ describe('the neutralised set is derived from the carrier table, and its boundar
     const payload = strippedBodyOf(value, 'block').join(LF);
     expect(payload).toBe('links = { adr = "https://x.test\\u002F\\u002A/y" }');
     for (const sequence of EXPECTED_END_SEQUENCES) expect(payload).not.toContain(sequence);
-    expect(valueReadBack(renderFrontMatter(value, 'block', LF), 'block')).toEqual(value);
+    expect(valueReadBack(successOf(renderFrontMatter(value, 'block', LF)), 'block')).toEqual(value);
   });
 });
 

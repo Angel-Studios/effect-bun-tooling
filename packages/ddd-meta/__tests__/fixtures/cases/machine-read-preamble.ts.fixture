@@ -1,4 +1,4 @@
-// biome-ignore lint/suspicious/noExplicitAny: this fixture pins the preamble rule
+// biome-ignore-all lint/suspicious/noExplicitAny: this fixture pins the file-scoped preamble rule
 /* ---uv
 l = "infrastructure"
 owner = "platform_tooling"

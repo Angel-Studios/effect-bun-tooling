@@ -68,15 +68,36 @@ objects, and a consumer lifts a `Result` into Effect in one call.
 ## Writing
 
 ```ts
+import * as Result from 'effect/Result';
 import { upsertFrontMatter } from '@packages/ddd-meta/write';
 
 const written = upsertFrontMatter(source, 'hash', { l: 'infrastructure', owner: 'platform_tooling' });
+if (Result.isFailure(written)) return report(written.failure);
+save(path, written.success);
 ```
 
-`upsertFrontMatter` preserves the preamble above the block (shebang, XML prolog, `#![…]`, machine-read
-directives), preserves the file's dominant line ending and its final-newline convention, replaces an
-existing in-position block, inserts after the preamble when absent, and is idempotent on all four
-carriers. It refuses with a typed error when the text is misplaced, duplicated or unterminated.
+`upsertFrontMatter` returns `Result<string, FrontMatterWriteError>`. It preserves the file's dominant line
+ending and its final-newline convention, replaces an existing in-position block, inserts after the preamble
+when absent, and is idempotent on all four carriers.
+
+The preamble it writes below is a shebang, an XML prolog, a Rust `#![…]` inner attribute, a **closed**
+Markdown YAML fence, and any **file-scoped** machine-read directive. A **next-line** directive —
+`@ts-expect-error`, `@ts-ignore`, `ast-grep-ignore`, `biome-ignore`, `prettier-ignore`, `svelte-ignore`,
+`rustfmt::skip` — STOPS the preamble instead, and the block is written ABOVE it so the directive stays
+adjacent to the line it suppresses.
+
+It refuses with a typed error in **five** cases: three about the TEXT, two about the VALUE.
+
+| Tag | Refused because |
+|---|---|
+| `MisplacedFrontMatter` | the text already carries a block that is out of position |
+| `DuplicateFrontMatter` | the text already carries two blocks |
+| `UnterminatedBlock` | the text carries a block that is never closed |
+| `UnregisteredField` | the value declares a key the closed registry does not carry |
+| `PayloadNotRenderable` | the rendered payload would not parse as TOML, or would fail field validation |
+
+The VALUE is validated before the TEXT is touched, so a bad value is reported even when the file's existing
+block is also misplaced.
 
 ## Shape validity is not vocabulary validity
 
@@ -96,12 +117,12 @@ ungraded claim is reported as ungraded, never as approved.
 | Subpath | Holds |
 |---|---|
 | `./parse` | `parseFrontMatter`, `readFrontMatter`, `locateFrontMatter`, the `ParseOutcome` union |
-| `./write` | `renderFrontMatter`, `upsertFrontMatter`, the canonical TOML renderer |
-| `./sentinel` | the `---uv` sentinel, line splitting, EOL detection, the preamble rule, `MACHINE_READ_DIRECTIVES` |
+| `./write` | `renderFrontMatter`, `upsertFrontMatter`, the canonical TOML renderer, the host-comment neutralisation |
+| `./sentinel` | the `---uv` sentinel, line splitting, EOL detection, the preamble rule, the `MACHINE_READ_DIRECTIVES` recognition vocabulary and the `DIRECTIVE_SCOPES` table that decides what may be consumed |
 | `./carrier` | the four carriers and their delimiters, prefix application and stripping |
 | `./schema` | the Effect Schema for the payload, the value shapes, `decodeFrontMatter` |
 | `./registry` | the closed 11-field registry, `FORBIDDEN_DERIVABLE`, `assertRegistryDerivability` |
-| `./errors` | every error shape and its constructor, `describeFrontMatterError` |
+| `./errors` | every error shape and its constructor, `describeFrontMatterError`, `describeFrontMatterWriteError` |
 | `./exclude` | the exclusion classifier, `DEFAULT_EXCLUSION_POLICY`, `ExclusionPolicySchema` |
 | `./vocabulary` | the `Vocabulary` seam, `gradeFrontMatter`, `decodeVocabulary` |
 

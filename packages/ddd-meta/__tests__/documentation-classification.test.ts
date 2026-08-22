@@ -1,28 +1,15 @@
 import { describe, expect, it } from 'bun:test';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, sep } from 'node:path';
+import { join, relative, sep } from 'node:path';
 import * as Result from 'effect/Result';
 import { readFrontMatter } from '../src/parse.ts';
-import { PACKAGE_ROOT } from './support.ts';
-
-const REPO_ROOT_MARKERS: readonly string[] = ['bun.lock', '.git'];
+import { PACKAGE_ROOT, repoRoot } from './support.ts';
 
 const FORMAT_DOCUMENTATION_DIRECTORY = join('docs', 'frontmatter');
 
 const MARKDOWN_SUFFIX = '.md';
 
 const SCANNED_OUTCOMES: readonly string[] = ['NoFrontMatter', 'FrontMatter'];
-
-const repoRoot = (): string => {
-  let directory = import.meta.dir;
-  for (;;) {
-    if (REPO_ROOT_MARKERS.some((marker) => existsSync(join(directory, marker)))) return directory;
-    const parent = dirname(directory);
-    if (parent === directory) break;
-    directory = parent;
-  }
-  throw new Error(`could not locate the repo root by walking up from ${import.meta.dir}`);
-};
 
 const ROOT = repoRoot();
 

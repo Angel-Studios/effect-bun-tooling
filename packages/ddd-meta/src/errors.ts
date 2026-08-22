@@ -145,6 +145,32 @@ export const vocabularyDecodeError = (message: string): VocabularyDecodeError =>
   message,
 });
 
+export type UnregisteredField = {
+  readonly _tag: 'UnregisteredField';
+  readonly keys: readonly string[];
+};
+
+export type PayloadNotRenderable = {
+  readonly _tag: 'PayloadNotRenderable';
+  readonly message: string;
+};
+
+export type FrontMatterWriteError = FrontMatterError | UnregisteredField | PayloadNotRenderable;
+
+export const WRITE_ERROR_TAGS = ['UnregisteredField', 'PayloadNotRenderable'] as const;
+
+export type WriteErrorTag = (typeof WRITE_ERROR_TAGS)[number];
+
+export const unregisteredField = (keys: readonly string[]): UnregisteredField => ({
+  _tag: 'UnregisteredField',
+  keys,
+});
+
+export const payloadNotRenderable = (message: string): PayloadNotRenderable => ({
+  _tag: 'PayloadNotRenderable',
+  message,
+});
+
 export const describeFrontMatterError = (error: FrontMatterError): string => {
   switch (error._tag) {
     case 'UnterminatedBlock':
@@ -163,5 +189,19 @@ export const describeFrontMatterError = (error: FrontMatterError): string => {
       return `line ${error.line}: front matter must open on the first line after the preamble, and this is not that line`;
     case 'DuplicateFrontMatter':
       return `line ${error.line}: a second front-matter opening in one file`;
+  }
+};
+
+export const isWriteErrorTag = (tag: string): tag is WriteErrorTag =>
+  (WRITE_ERROR_TAGS as readonly string[]).includes(tag);
+
+export const describeFrontMatterWriteError = (error: FrontMatterWriteError): string => {
+  switch (error._tag) {
+    case 'UnregisteredField':
+      return `this value declares ${error.keys.join(', ')}, which the closed field registry does not carry`;
+    case 'PayloadNotRenderable':
+      return `this value cannot be rendered as a front-matter payload: ${error.message}`;
+    default:
+      return describeFrontMatterError(error);
   }
 };

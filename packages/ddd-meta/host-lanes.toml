@@ -1,0 +1,9 @@
+# Declared host-validity lanes for __tests__/host-validity.test.ts.
+#
+# A lane whose toolchain is absent may only be skipped when this file WAIVES it, with a reason.
+# Absence is then a recorded decision rather than an accident of the runner image. Delete a waiver
+# and the lane refuses to pass on a machine without its toolchain.
+
+[rustc]
+waived = true
+reason = "ubuntu-latest, the only runner .github/workflows targets, ships no Rust toolchain. The property the rustc arm proves - that a host which NESTS block comments is not swallowed by an unbalanced open - is asserted on every developer machine that has cargo, and the tsc arm covers the non-nesting half unconditionally on every runner. Set waived = false to require rustc everywhere."

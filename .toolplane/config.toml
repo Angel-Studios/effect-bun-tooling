@@ -1,11 +1,15 @@
 apiVersion = 1
 repo = "effect-bun-tooling"
 
-# Only ts-effect is pinned. `svelte-frontend` is deliberately absent: the assimilator's survey
-# looks for a svelte.config or a root-manifest svelte dependency, and this repo has neither.
-# `@packages/bun-svelte-test` COMPILES Svelte for its consumers but contains no Svelte source of
-# its own, so pinning the pack would assert a stack the tree shows no evidence of and the
-# convergence check would report it as drift forever.
+# Only ts-effect is pinned. `svelte-frontend` is DECLINED, not overlooked, and the convergence check
+# now says so out loud: since the survey began reading markers inside `workspaceRoots` it finds the
+# SvelteKit dependency in `packages/bun-svelte-test/package.json` and raises
+#   [advisory] stack "svelte-frontend" evidenced ... but not pinned
+# That advisory is correct about the evidence and is being answered here rather than silenced. The
+# package COMPILES Svelte on behalf of its consumers and contains no .svelte source of its own, so
+# the pack's contribution — a Svelte grammar, a hardcoded-colour lint and a matching PreToolUse hook
+# — would guard a file population of zero while adding a hook this repo must then register and
+# maintain. Revisit the moment any .svelte file lands in this tree.
 stackPacks = [
   { name = "ts-effect", version = "0.1.0" },
 ]
