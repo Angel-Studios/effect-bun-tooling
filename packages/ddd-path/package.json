@@ -1,6 +1,6 @@
 {
   "name": "@packages/ddd-path",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "The DDD path grammar: bounded context, language root and test trees derived from file paths alone, across six languages, with partial adoption and no flag day",
   "license": "MIT",
   "repository": {

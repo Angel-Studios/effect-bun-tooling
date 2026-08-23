@@ -83,8 +83,8 @@ describe('a value that renders as valid TOML but fails field validation is refus
   it('separates the two arms: a hostile KEY fails the parse arm, a bad VALUE fails the decode arm', () => {
     const hostileKey = parseToml(rawPayloadOf('links', { 'a*/b': 'https://x.test/ok' }));
     const badValue = parseToml(rawPayloadOf('l', 'Domain'));
-    expect(Result.isFailure(hostileKey)).toBe(true);
-    expect(Result.isSuccess(badValue)).toBe(true);
+    expect(hostileKey.pipe(Result.isFailure)).toBe(true);
+    expect(badValue.pipe(Result.isSuccess)).toBe(true);
   });
 });
 
