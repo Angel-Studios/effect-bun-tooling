@@ -6,6 +6,7 @@ import type * as Scope from 'effect/Scope';
 import * as internal from './internal/internal.ts';
 import type { API, Methods, MethodsNonLive, Tester, TestServices } from './types.ts';
 
+export type { Mock } from 'bun:test';
 export type {
   API,
   Arbitraries,
