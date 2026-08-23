@@ -109,7 +109,7 @@ const announceAbsentLane = (): void => {
       '',
       '  ############################################################################',
       '  # ddd-meta host-validity: the rustc ARM DID NOT RUN. rustc is not on PATH. #',
-      `  # waived in host-lanes.toml: ${String(HOST_LANES.rustc.waived)}`.padEnd(77) + '#',
+      `${`  # waived in host-lanes.toml: ${String(HOST_LANES.rustc.waived)}`.padEnd(77)}#`,
       '  # The nesting-host property was NOT asserted on this machine.              #',
       '  ############################################################################',
       '',

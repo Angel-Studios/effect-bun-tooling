@@ -1,3 +1,4 @@
+import type * as bt from 'bun:test';
 import type * as Duration from 'effect/Duration';
 import type * as Effect from 'effect/Effect';
 import type * as Layer from 'effect/Layer';
@@ -34,8 +35,32 @@ export interface TestOptions {
 export type API = TestCollectorCallable;
 
 interface TestCollectorCallable {
-  (name: string, fn: (ctx: TestContext) => unknown | Promise<unknown>, options?: number | TestOptions): void;
-  (name: string, options: TestOptions, fn: (ctx: TestContext) => unknown | Promise<unknown>): void;
+  // biome-ignore-start lint/suspicious/noConfusingVoidType: `void | Promise<unknown>` is bun's own
+  // signature and is load-bearing. A bare `void` return type triggers TypeScript's void-assignability
+  // rule, which accepts a callback returning ANYTHING — including an Effect that bun never runs, so
+  // the test passes with every assertion skipped. Inside a union that rule does not apply, so this is
+  // the shape that rejects it. Splitting the union into overloads restores the hole.
+  (name: string, fn: (ctx: TestContext) => void | Promise<unknown>, options?: number | TestOptions): void;
+  (name: string, options: TestOptions, fn: (ctx: TestContext) => void | Promise<unknown>): void;
+  // biome-ignore-end lint/suspicious/noConfusingVoidType: see above
+}
+
+export type ForFn<T> = (arg: T, ctx: TestContext) => unknown | Promise<unknown>;
+
+export interface BunRegistrars {
+  readonly skip: API;
+  readonly only: API;
+  readonly fails: API;
+  readonly skipIf: (condition: unknown) => API;
+  readonly runIf: (condition: unknown) => API;
+  readonly each: typeof bt.it.each;
+  readonly for: <T>(
+    cases: ReadonlyArray<T>,
+  ) => (
+    name: string,
+    optsOrFn: number | TestOptions | ForFn<T>,
+    maybeFnOrOpts?: ForFn<T> | number | TestOptions,
+  ) => void;
 }
 
 export type TestFunction<A, E, R, TestArgs extends Array<unknown>> = (
@@ -78,7 +103,9 @@ export interface Tester<R> extends Test<R> {
   ) => void;
 }
 
-export interface MethodsNonLive<R = never, ExcludeTestServices extends boolean = false> extends API {
+export interface MethodsNonLive<R = never, ExcludeTestServices extends boolean = false>
+  extends API,
+    BunRegistrars {
   readonly effect: Tester<(ExcludeTestServices extends true ? never : TestServices) | R>;
   readonly flakyTest: <A, E, R2>(
     self: Effect.Effect<A, E, R2>,

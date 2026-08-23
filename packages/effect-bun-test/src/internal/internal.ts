@@ -25,14 +25,6 @@ type BunOptions = { timeout?: number; retry?: number; repeats?: number };
 
 type BunRegistrar = (name: string, fn: BunTestFn, options?: number | BunOptions) => void;
 
-type BunEachRegistrar<T> = {
-  (name: string, fn: (value: T) => unknown, options?: number | BunOptions): void;
-  skip: BunEachRegistrar<T>;
-  only: BunEachRegistrar<T>;
-  todo: BunEachRegistrar<T>;
-  failing: BunEachRegistrar<T>;
-};
-
 interface BunTestApi extends BunRegistrar {
   skip: BunRegistrar;
   only: BunRegistrar;
@@ -41,8 +33,18 @@ interface BunTestApi extends BunRegistrar {
   if: (condition: unknown) => BunRegistrar;
   skipIf: (condition: unknown) => BunRegistrar;
   todoIf: (condition: unknown) => BunRegistrar;
-  each: <T>(cases: ReadonlyArray<T>) => BunEachRegistrar<T>;
+  each: typeof bunEach;
 }
+
+type BunRegistrarFamily = ((name: string, fn: unknown, options?: unknown) => void) & {
+  skip: BunRegistrarFamily;
+  only: BunRegistrarFamily;
+  todo: BunRegistrarFamily;
+  failing: BunRegistrarFamily;
+};
+
+const bunEach: typeof test.each = (...args: Parameters<typeof test.each>) =>
+  (test.each as typeof test.each).apply(test, args);
 
 const bunTest = test as unknown as BunTestApi;
 
@@ -152,17 +154,15 @@ const makeLazyRegistrar = (resolve: () => BunRegistrar): BunTest.API =>
     resolve()(name, fn, toBunOptions(opts));
   }) as unknown as BunTest.API;
 
-type ForFn<T> = (arg: T, ctx: BunTest.TestContext) => unknown | Promise<unknown>;
-
 const makeForRegistrar =
   <T>(cases: ReadonlyArray<T>) =>
   (
     name: string,
-    optsOrFn: number | BunTest.TestOptions | ForFn<T>,
-    maybeFnOrOpts?: ForFn<T> | number | BunTest.TestOptions,
+    optsOrFn: number | BunTest.TestOptions | BunTest.ForFn<T>,
+    maybeFnOrOpts?: BunTest.ForFn<T> | number | BunTest.TestOptions,
   ): void => {
     const fnFirst = typeof optsOrFn === 'function';
-    const fn = fnFirst ? optsOrFn : (maybeFnOrOpts as ForFn<T> | undefined);
+    const fn = fnFirst ? optsOrFn : (maybeFnOrOpts as BunTest.ForFn<T> | undefined);
     const opts = fnFirst
       ? (maybeFnOrOpts as number | BunTest.TestOptions | undefined)
       : (optsOrFn as number | BunTest.TestOptions);
@@ -171,7 +171,7 @@ const makeForRegistrar =
     }
 
     const o = isObject(opts) ? (opts as BunTest.TestOptions) : undefined;
-    const cased = bunTest.each(cases);
+    const cased = (bunEach as unknown as <U>(c: ReadonlyArray<U>) => BunRegistrarFamily)(cases);
     const register =
       o?.todo === true
         ? cased.todo
@@ -183,23 +183,10 @@ const makeForRegistrar =
               ? cased.skip
               : cased;
 
-    register(name, (value) => fn(value, makeContext()), toBunOptions(opts));
+    register(name, (value: T) => fn(value, makeContext()), toBunOptions(opts));
   };
 
-export type DefaultApi = BunTest.API & {
-  skip: BunTest.API;
-  only: BunTest.API;
-  skipIf: (condition: unknown) => BunTest.API;
-  runIf: (condition: unknown) => BunTest.API;
-  fails: BunTest.API;
-  for: <T>(
-    cases: ReadonlyArray<T>,
-  ) => (
-    name: string,
-    optsOrFn: number | BunTest.TestOptions | ForFn<T>,
-    maybeFnOrOpts?: ForFn<T> | number | BunTest.TestOptions,
-  ) => void;
-};
+export type DefaultApi = BunTest.API & BunTest.BunRegistrars;
 
 const makeDefaultApi = (): DefaultApi =>
   Object.assign(
@@ -214,6 +201,7 @@ const makeDefaultApi = (): DefaultApi =>
       skipIf: (condition: unknown) => makeRegistrar(bunTest.skipIf(condition)),
       runIf: (condition: unknown) => makeRegistrar(bunTest.if(condition)),
       fails: makeRegistrar(bunTest.failing),
+      each: bunEach,
       for: makeForRegistrar,
     },
   );

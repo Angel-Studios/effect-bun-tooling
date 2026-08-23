@@ -20,7 +20,7 @@
     },
     "packages/bun-svelte-test": {
       "name": "@packages/bun-svelte-test",
-      "version": "0.4.1",
+      "version": "0.5.0",
       "dependencies": {
         "@happy-dom/global-registrator": "20.9.0",
         "@types/bun": "^1.3.14",
@@ -38,9 +38,33 @@
         "svelte": "^5.56.8",
       },
     },
+    "packages/ddd-meta": {
+      "name": "@packages/ddd-meta",
+      "version": "0.4.1",
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "effect": "catalog:",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "effect": ">=4.0.0-rc.109 <5",
+      },
+    },
+    "packages/ddd-path": {
+      "name": "@packages/ddd-path",
+      "version": "0.4.1",
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "effect": "catalog:",
+        "typescript": "catalog:",
+      },
+      "peerDependencies": {
+        "effect": ">=4.0.0-rc.109 <5",
+      },
+    },
     "packages/effect-bun-test": {
       "name": "@packages/effect-bun-test",
-      "version": "0.4.1",
+      "version": "0.5.0",
       "dependencies": {
         "@types/bun": "^1.3.14",
       },
@@ -55,7 +79,7 @@
     },
     "packages/effect-test-kit": {
       "name": "@packages/effect-test-kit",
-      "version": "0.4.1",
+      "version": "0.5.0",
       "devDependencies": {
         "@types/bun": "catalog:",
         "effect": "catalog:",
@@ -67,7 +91,7 @@
     },
     "packages/fixture-residue": {
       "name": "@packages/fixture-residue",
-      "version": "0.4.1",
+      "version": "0.5.0",
       "devDependencies": {
         "@types/bun": "catalog:",
         "typescript": "catalog:",
@@ -75,7 +99,7 @@
     },
     "packages/uuid-effect": {
       "name": "@packages/uuid-effect",
-      "version": "0.4.1",
+      "version": "0.5.0",
       "devDependencies": {
         "@types/bun": "catalog:",
         "effect": "catalog:",
@@ -180,6 +204,10 @@
     "@msgpackr-extract/msgpackr-extract-win32-x64": ["@msgpackr-extract/msgpackr-extract-win32-x64@3.0.4", "", { "os": "win32", "cpu": "x64" }, "sha512-CmCXPQrkbwExx3j946/PtHWHbYJiCRBRDl4BlkRQcJB/YOwQxJRTpoo7aTsortjgoJ1x7opzTSxn7C+ASSLVjQ=="],
 
     "@packages/bun-svelte-test": ["@packages/bun-svelte-test@workspace:packages/bun-svelte-test"],
+
+    "@packages/ddd-meta": ["@packages/ddd-meta@workspace:packages/ddd-meta"],
+
+    "@packages/ddd-path": ["@packages/ddd-path@workspace:packages/ddd-path"],
 
     "@packages/effect-bun-test": ["@packages/effect-bun-test@workspace:packages/effect-bun-test"],
 

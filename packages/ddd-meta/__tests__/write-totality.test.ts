@@ -27,7 +27,7 @@ const DECODE_ARM_CASES: readonly (readonly [string, string, FrontMatterFieldValu
   ['a link key that is not an ident', 'links', { ADR: 'https://x.test/a' }],
 ];
 
-const valueOf = (key: string, field: FrontMatterFieldValue): FrontMatter =>
+const frontMatterOf = (key: string, field: FrontMatterFieldValue): FrontMatter =>
   ({ [key]: field }) as unknown as FrontMatter;
 
 const rawPayloadOf = (key: string, field: FrontMatterFieldValue): string =>
@@ -69,7 +69,7 @@ describe('the write path refuses a value it cannot render, rather than emitting 
 describe('a value that renders as valid TOML but fails field validation is refused by the decode arm', () => {
   for (const [label, key, field] of DECODE_ARM_CASES) {
     it(`refuses ${label}`, () => {
-      expect(`${label}: ${refusalTagOf(valueOf(key, field))}`).toBe(`${label}: PayloadNotRenderable`);
+      expect(`${label}: ${refusalTagOf(frontMatterOf(key, field))}`).toBe(`${label}: PayloadNotRenderable`);
     });
   }
 
@@ -83,8 +83,8 @@ describe('a value that renders as valid TOML but fails field validation is refus
   it('separates the two arms: a hostile KEY fails the parse arm, a bad VALUE fails the decode arm', () => {
     const hostileKey = parseToml(rawPayloadOf('links', { 'a*/b': 'https://x.test/ok' }));
     const badValue = parseToml(rawPayloadOf('l', 'Domain'));
-    expect(Result.isFailure(hostileKey)).toBe(true);
-    expect(Result.isSuccess(badValue)).toBe(true);
+    expect(hostileKey.pipe(Result.isFailure)).toBe(true);
+    expect(badValue.pipe(Result.isSuccess)).toBe(true);
   });
 });
 
