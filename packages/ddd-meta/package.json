@@ -1,6 +1,6 @@
 {
   "name": "@packages/ddd-meta",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "The front-matter FORMAT: a schema-validated TOML metadata block carried in a comment at the top of an owned, comment-capable file, plus the four per-language comment carriers (block, hash, apostrophe, xml) that read and write one identical payload. Closed 11-field registry whose governing rule is that a field is legitimate only when no AST can PRODUCE its value; refutable-but-not-derivable is the point. Ships the format and ZERO vocabulary: layer/pattern/subdomain/tier members arrive as injected data, never as a second copy of someone else's truth.",
   "license": "MIT",
   "repository": {

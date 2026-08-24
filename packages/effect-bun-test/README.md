@@ -96,10 +96,38 @@ nothing pulls in a subsystem you are not using.
 | `describeWrapped(name, f)` | `describe` with harness methods bound. |
 | `makeMethods(it)` | Bind the harness onto a custom registrar. |
 | `addEqualityTesters()` | **No-op.** Kept for `@effect/vitest` API parity — see caveats. |
-| `describe` `test` `expect` `beforeAll` `beforeEach` `afterAll` `afterEach` `mock` `spyOn` `jest` `setSystemTime` | Re-exported `bun:test` primitives, so one import serves the whole file. |
+| `it.each(cases)(name, fn, opts?)` | bun's own table-driven registrar, for a NON-Effect body. Delegated to `bun:test` outright, so `%s`/`%p` name formatting, array-case spreading and the `.skip` / `.only` / `.todo` / `.failing` chain behave exactly as bun's do. |
+| `it.for(cases)(name, fn, opts?)` | Like `it.each` but hands the case as ONE value plus a `TestContext`, never spread. |
+| `it.skip` `it.only` `it.skipIf(c)` `it.runIf(c)` `it.fails` | bun's registrar modifiers, carried on the harness `it`. |
+| `describe` `test` `expect` `beforeAll` `beforeEach` `afterAll` `afterEach` `mock` `spyOn` `jest` `setSystemTime` `type Mock` | Re-exported `bun:test` primitives, so one import serves the whole file. |
 
 `TestContext` (the object passed to your test fn) carries `signal`, `onTestFinished`,
 `onTestFailed`. **`ctx.signal` is inert** — see [Known limitations](#known-limitations).
+
+### The bare `it` refuses an Effect, and that is load-bearing
+
+`it(name, fn)` types `fn`'s return as bun's own `void | Promise<unknown>`. An `Effect` is not
+thenable, so bun never runs one handed to the bare registrar: the case reports **PASS with every
+assertion skipped**, and the test count does not move. Typing it this way makes that a `tsc` error
+instead:
+
+```ts
+it('x', () => Effect.gen(function* () { ... }));   // tsc: Effect<...> is not assignable to
+                                                    // void | Promise<unknown>
+it.effect('x', () => Effect.gen(function* () { ... }));   // correct
+```
+
+Two implementation facts, both measured, both easy to undo by accident:
+
+- **The union is the guard.** Splitting `void | Promise<unknown>` into separate `void` and
+  `Promise<unknown>` overloads RE-OPENS the hole: a bare `void` return type triggers TypeScript's
+  void-assignability rule, which accepts a callback returning anything at all. Only inside a union
+  does that rule not apply.
+- Biome's `noConfusingVoidType` fires on exactly this union, so it carries a suppression. That
+  suppression is the reason the guard exists — it is not tidy-up-able.
+
+`__tests__/bare-it-rejects-effect.types.test.ts` pins this with a `@ts-expect-error` fixture, so a
+regression fails `bun run tsc` rather than going quiet.
 
 ### Assertions
 
