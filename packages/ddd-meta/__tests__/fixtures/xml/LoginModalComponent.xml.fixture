@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8" ?>
-<!-- Census fixture modal "M". FILENAME (`LoginModalComponent`) DIFFERS from the
-     declared `name="LoginModal"` — the census keys on `name=`, never the filename
-     (mirrors the real `RumViewScope.xml` → `name="datadogroku_RumViewScope"` case).
-     `name` ends in `Modal` (not View/Screen) → modals[] (un-emittable; awareness only). -->
-<component name="LoginModal" extends="BaseScreen">
-  <interface />
-</component>

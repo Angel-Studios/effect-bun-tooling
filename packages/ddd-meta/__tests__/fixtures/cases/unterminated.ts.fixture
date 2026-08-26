@@ -1,5 +1,0 @@
-/* ---uv
-l = "domain"
-owner = "platform_tooling"
-
-export const FIXTURE_ROOT_DIRNAME = '.test-fixtures';

@@ -74,7 +74,7 @@ expire. An exemption that outlives its reason is deleted, never widened.
 
 ## Hard Constraints (DO NOT)
 
-- **NO package manager other than bun.** `packageManager` pins `bun@1.3.14` and `engines` requires
+- **NO package manager other than bun.** `packageManager` pins `bun@1.4.0` and `engines` requires
   it; there is no `pnpm-workspace.yaml`, no `package-lock.json`, and no npm or yarn lockfile. The
   workspace catalog lives inside `package.json` and is resolved by bun's `catalog:` protocol, which
   pnpm does not read. Enforced by: `bun.lock` being the only committed lockfile, and every CI job in

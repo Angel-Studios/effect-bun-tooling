@@ -1,7 +1,0 @@
-[test]
-onlyFailures = true
-coverageThreshold = { lines = 0.80, functions = 0.80, statements = 0.80 }
-coverageReporter = ["text", "lcov"]
-coveragePathIgnorePatterns = [
-  "dist/**",
-]

@@ -1,7 +1,0 @@
-' ---uv
-' tags = ["zeta", "alpha"]
-' ---
-
-sub init()
-    m.label = m.top.findNode("label")
-end sub

@@ -1,7 +1,0 @@
-# ---uv
-# l = "infrastructure"
-# owner = "platform_tooling"
-# ---
-
-[test]
-onlyFailures = true

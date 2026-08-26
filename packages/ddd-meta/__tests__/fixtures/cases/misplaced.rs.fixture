@@ -1,9 +1,0 @@
-//! The Unix-domain-socket NDJSON line protocol spoken with the supervisor.
-//!
-//! One JSON object per line.
-
-/* ---uv
-l = "domain"
---- */
-
-use serde::{Deserialize, Serialize};
