@@ -147,8 +147,8 @@ describe('the two emitters agree on where they put things', () => {
     });
   }
 
-  it(`finds a real ${BUNDLED_TYPES_DIR}/ tree, so excluding it from the comparison excludes something`, () => {
-    expect(shapes.flatMap((shape) => shape.bundled).length).toBeGreaterThan(0);
+  it(`emits NO ${BUNDLED_TYPES_DIR}/ tree, because no package bundles a workspace sibling any more`, () => {
+    expect(shapes.flatMap((shape) => shape.bundled)).toEqual([]);
   });
 
   it('finds emitted JavaScript beside the entrypoints, so the allowance allows for something real', () => {

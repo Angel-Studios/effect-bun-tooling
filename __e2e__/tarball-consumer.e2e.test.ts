@@ -20,11 +20,6 @@ afterAll(() => {
   fixtures.dispose();
 });
 
-/** Bundled into `@packages/effect-bun-test`'s dist. A consumer must never be asked to resolve this
- *  name: the `@packages` scope is not ownable, so it resolves nowhere without a manual `overrides`
- *  entry, and proving that requirement is GONE is the point of this suite. */
-const BUNDLED_AWAY = '@packages/fixture-residue';
-
 /** An Effect v3 release: outside every peer range here, and a major these packages cannot work
  *  against. Exactly the case a dependency declaration would resolve into a silent second copy. */
 const CONFLICTING_EFFECT = '3.19.0';
@@ -36,20 +31,20 @@ const CONFLICTING_EFFECT = '3.19.0';
  * that nothing here vendors a copy of Effect.
  */
 const USE_SOURCE = [
-  `import { parseFixtureOwner } from '@packages/effect-bun-test/fixture-root';`,
+  `import { withoutGitLocationVars } from '@packages/effect-bun-test/fixture-root';`,
   `import { expectTag } from '@packages/effect-test-kit/tagged';`,
   `import { UuidTest } from '@packages/uuid-effect/layer.test';`,
   `import { Uuid } from '@packages/uuid-effect/tag';`,
   `import { Effect } from 'effect';`,
   '',
-  "const owner = parseFixtureOwner('suite--box--42--abcd');",
-  "if (owner === undefined) throw new Error('parseFixtureOwner returned undefined');",
+  "const env = withoutGitLocationVars({ GIT_DIR: 'x', SUITE: 'suite', HOST: 'box', PID: '42' });",
+  "if ('GIT_DIR' in env) throw new Error('withoutGitLocationVars kept GIT_DIR');",
   '',
   'const uuid = await Effect.runPromise(Effect.provide(Uuid.next, UuidTest(7)));',
   '',
   "const tagged = expectTag({ _tag: 'Boom' } as { readonly _tag: 'Boom' | 'Fine' }, 'Boom');",
   '',
-  "process.stdout.write([owner.label, owner.host, String(owner.pid), uuid, tagged._tag].join(' ') + '\\n');",
+  "process.stdout.write([env.SUITE, env.HOST, env.PID, uuid, tagged._tag].join(' ') + '\\n');",
   '',
 ].join('\n');
 
@@ -60,14 +55,15 @@ const USE_SOURCE = [
  */
 const TYPECHECK_SOURCE = [
   `import * as it from '@packages/effect-bun-test';`,
-  `import { parseFixtureOwner, type FixtureOwner } from '@packages/effect-bun-test/fixture-root';`,
+  `import { makeFixtureRoot, withoutGitLocationVars, type FixtureRoot } from '@packages/effect-bun-test/fixture-root';`,
   `import { expectTag } from '@packages/effect-test-kit/tagged';`,
   `import { UuidTest } from '@packages/uuid-effect/layer.test';`,
   `import { Uuid } from '@packages/uuid-effect/tag';`,
   `import * as Effect from 'effect/Effect';`,
   `import * as Layer from 'effect/Layer';`,
   '',
-  'export const owner: FixtureOwner | undefined = parseFixtureOwner(`suite--box--42--abcd`);',
+  'export const env: Record<string, string> = withoutGitLocationVars({ GIT_DIR: `x` });',
+  'export const mint: (suite: string) => FixtureRoot = makeFixtureRoot;',
   '',
   'it.effect(`runs a consumer-built Effect`, () => Effect.sync(() => undefined));',
   '',
@@ -237,7 +233,8 @@ describe('a consumer installs the packed tarballs and declares nothing else', ()
  * The narrow case the old contract could not satisfy. `@packages/effect-bun-test` used to depend on
  * `@packages/fixture-residue`, and because that scope resolves nowhere a consumer naming only the
  * one package got a failed install until they hand-wrote an `overrides` entry for the whole
- * transitive closure. The sibling is bundled into the dist now, so the closure is empty.
+ * transitive closure. That package is deleted, so no `@packages` closure exists beneath any tarball
+ * and this suite pins the closure EMPTY rather than merely bundled away.
  */
 describe('a consumer naming ONE package needs no overrides for a closure beneath it', () => {
   const soloDir = ((): string => {
@@ -261,11 +258,11 @@ describe('a consumer naming ONE package needs no overrides for a closure beneath
     writeFileSync(
       join(dir, 'use.ts'),
       [
-        `import { parseFixtureOwner } from '${consumed}/fixture-root';`,
+        `import { withoutGitLocationVars } from '${consumed}/fixture-root';`,
         '',
-        "const owner = parseFixtureOwner('suite--box--42--abcd');",
-        "if (owner === undefined) throw new Error('parseFixtureOwner returned undefined');",
-        "process.stdout.write([owner.label, owner.host, String(owner.pid)].join(' ') + '\\n');",
+        "const env = withoutGitLocationVars({ GIT_DIR: 'x', SUITE: 'suite', HOST: 'box', PID: '42' });",
+        "if ('GIT_DIR' in env) throw new Error('withoutGitLocationVars kept GIT_DIR');",
+        "process.stdout.write([env.SUITE, env.HOST, env.PID].join(' ') + '\\n');",
         '',
       ].join('\n'),
     );
@@ -291,14 +288,13 @@ describe('a consumer naming ONE package needs no overrides for a closure beneath
     INSTALL_TIMEOUT_MS,
   );
 
-  it('never resolves the bundled sibling, whose scope resolves nowhere', () => {
+  it('resolves no other @packages name, because the closure beneath the tarball is empty', () => {
     expect(readdirSync(join(soloDir, 'node_modules', WORKSPACE_SCOPE.slice(0, -1)))).toEqual([
       'effect-bun-test',
     ]);
-    expect(existsSync(join(soloDir, 'node_modules', BUNDLED_AWAY))).toBe(false);
   });
 
-  it('still reaches the code that sibling contributes, because the bundle carries it', () => {
+  it('reaches the fixture-root surface the one installed tarball carries', () => {
     const used = run(['bun', 'use.ts'], soloDir);
     expect(used.output).toContain('suite box 42');
   });

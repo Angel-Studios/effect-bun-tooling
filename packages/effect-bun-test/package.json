@@ -62,7 +62,6 @@
     "effect": ">=4.0.0-rc.109 <5"
   },
   "devDependencies": {
-    "@packages/fixture-residue": "workspace:*",
     "effect": "catalog:",
     "typescript": "catalog:"
   }

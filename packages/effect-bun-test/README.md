@@ -216,13 +216,16 @@ lifecycle; `fixtureDirAtBase(prefix)` returns a single directory.
   `node_modules` and mint every fixture in the wrong place; `bun pm pack` strips `.git` but **not**
   `bun.lock`, so that is the marker the `__e2e__` contents check actually guards against. The walk
   is unaffected by the move from `src/` to `dist/`: both sit one level below the package root.
-- Each directory carries a `<label>--<host>--<pid>--<random>` ownership token, so
-  `@packages/fixture-residue/sweep` can tell a live suite's fixture from one a crashed run
-  stranded. The first mint in a process reports pre-existing residue on stderr and does **not**
-  reap it, so a tooling plane can see it.
-- **`afterAll` does not run on a bail-out, a `SIGKILL`, or a runner crash**, so treat the residue
-  report as a real signal rather than untidiness, and never let a reaper excuse a missing
-  `dispose()`.
+- Each directory carries a `<label>--<host>--<pid>--<random>` ownership token, so a stranded
+  directory still names the run that made it. **Nothing classifies or reports those directories any
+  more.** The residue sweep that read the token — owner liveness, entry classification, the stderr
+  report on first mint — was deleted along with `@packages/fixture-residue`, and no replacement
+  ships here. The token is now a debugging aid a human reads, not an input any tool consumes.
+- **`afterAll` does not run on a bail-out, a `SIGKILL`, or a runner crash**, so `dispose()` is the
+  ONLY thing that removes a fixture directory and a crashed run leaves its directory behind
+  permanently. Nothing detects that, and nothing reaps it on a later run: reaping is per-suite and
+  in-process, and cross-run residue is now unguarded by decision. Budget for `.test-fixtures`
+  growing without bound on a machine where suites crash, and clear it by hand.
 - If a suite runs `git` inside a fixture, strip `GIT_LOCATION_VARS` from the child environment with
   `withoutGitLocationVars(process.env)`. An in-repo fixture plus an inherited absolute `GIT_DIR`
   makes the child operate **silently** on the real repository.

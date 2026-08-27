@@ -259,9 +259,9 @@ node_modules". Flag these:
 1. **A change to an `exports` map, a `files` array, or a peer range reviewed on a green working-tree
    run alone.** Those gates read source; the only check that installs what npm receives is
    `bun run test:e2e`, which packs real tarballs. Absent evidence it ran, the change is unreviewed.
-2. **A new runtime dependency in `fixture-residue`.** It is node-builtins-only on purpose, so a
-   compiled tooling binary can depend on it without pulling in a test harness. A single import
-   breaks that contract silently.
+2. **A new runtime dependency in any published package.** Every one ships with `effect` as a PEER
+   and nothing else beyond `@types/bun`, so a single import that lands in `dependencies` changes
+   what every consumer installs, silently.
 3. **A widened lint rule where the honest fix was a named exemption.** CLAUDE.md requires a
    file-scoped `ignores` entry with a reason and an expiry condition. Loosening a rule body until
    this repo's own counter-example passes disarms it for every consumer of the harness.

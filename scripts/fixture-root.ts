@@ -1,14 +1,13 @@
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { FIXTURE_ROOT_DIRNAME, HOST, SEP } from '@packages/fixture-residue/sweep';
+import { FIXTURE_ROOT_DIRNAME, HOST, SEP } from '@packages/effect-bun-test/fixture-root';
 import { repoRoot } from './workspace';
 
-/** The convention comes from `@packages/fixture-residue`, never a local copy. This minter is
- *  deliberately simpler than `@packages/effect-bun-test/fixture-root` — no sweep, no `reserve`,
- *  and the repo root comes from `./workspace` rather than a marker walk — but the directory NAME
- *  it produces must stay token-compatible with it, because the tooling-plane tripwire classifies
- *  every entry under the base. Re-declaring `SEP` or `HOST` here would silently demote these
- *  directories to `unjudgeable`, which is never reaped and reported until a human intervenes. */
+/** The convention comes from `@packages/effect-bun-test/fixture-root`, never a local copy. This
+ *  minter is deliberately simpler than that module's — no `reserve`, and the repo root comes from
+ *  `./workspace` rather than a marker walk — but the directory NAME it produces must stay
+ *  token-compatible with it. Re-declaring `SEP` or `HOST` here would let the two drift into
+ *  producing differently-shaped directories under one base. */
 
 export type FixtureRoot = {
   readonly path: () => string;

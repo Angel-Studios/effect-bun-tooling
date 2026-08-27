@@ -33,9 +33,9 @@ bump rather than a merge. The invariants below are weighted toward what a CONSUM
 Every directory under `packages/` is a separately published package with its own `exports` map and
 its own README. The test-tooling core is `effect-bun-test` (the Effect-native harness over
 `bun:test`: `it.effect` / `it.scoped` / `layer()`), `bun-svelte-test` (a `Bun.plugin` Svelte 5
-loader plus a happy-dom preload), `effect-test-kit` (cast-free tagged-error assertions),
-`fixture-residue` (the `.test-fixtures` ownership-token convention and its sweep, node builtins
-only), and `uuid-effect`. Start at `scripts/build-packages.ts` for what a publish actually emits and
+loader plus a happy-dom preload), `effect-test-kit` (cast-free tagged-error assertions), and `uuid-effect`. The `.test-fixtures`
+ownership-token convention lives in `effect-bun-test`'s `fixture-root`; the residue sweep that used
+to classify and report stranded fixture directories was DELETED, not relocated. Start at `scripts/build-packages.ts` for what a publish actually emits and
 `scripts/pack-workspace.ts` for the tarball path the e2e suite installs from.
 
 The package list is deliberately not enumerated with a count here: `packages/*` is the workspace

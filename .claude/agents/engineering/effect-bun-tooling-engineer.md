@@ -23,9 +23,6 @@ what a CONSUMER receives rather than what the working tree looks like.
   the `$app/navigation` and `$app/state` doubles, and `mount`.
 - `packages/effect-test-kit` — cast-free tagged-error assertions (`expectTag`, `expectFailureTag`,
   `expectCauseFailureTag`, `expectLeftTag`).
-- `packages/fixture-residue` — the `.test-fixtures` ownership-token convention, owner liveness,
-  entry classification and the sweep. Node builtins only, zero runtime dependencies, so a compiled
-  tooling binary can depend on it without dragging in a test harness.
 - `packages/uuid-effect`.
 - `scripts/build-packages.ts`, `scripts/pack-workspace.ts`, `scripts/set-version.ts`,
   `scripts/assert-tag-version.ts`, and `__e2e__/`.

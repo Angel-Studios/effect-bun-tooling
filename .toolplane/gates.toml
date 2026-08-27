@@ -68,8 +68,8 @@ root = "<repo>"
 gate = "deps:graph:check"
 reason = """\
 PARKED. The gate runs `madge --circular` over the source tree to refuse an import cycle. That \
-property is worth holding here — five packages import each other and `fixture-residue` is depended \
-on by `effect-bun-test` — but madge is not a declared dependency of this repo and adding it is a \
+property is worth holding here — the published packages import each other across the workspace — \
+but madge is not a declared dependency of this repo and adding it is a \
 separate decision from assimilation. Unpark condition: add madge and a `deps:graph:check` script; \
 the gate then arms with no other change. Until then the property is held by review alone."""
 

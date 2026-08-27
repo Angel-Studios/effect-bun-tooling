@@ -1,33 +1,12 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { hostname } from 'node:os';
 import { dirname, join } from 'node:path';
-import {
-  classifyEntry,
-  type EntryVerdict,
-  emptySweep,
-  FIXTURE_ROOT_DIRNAME,
-  type FixtureOwner,
-  HOST,
-  isOwnerAlive,
-  parseFixtureOwner,
-  type ReapFailure,
-  type ResidueEntry,
-  renderResidue,
-  renderSweepLine,
-  SEP,
-  type SweepResult,
-  sweepFixtureResidue as sweepFixtureResidueAt,
-} from '@packages/fixture-residue/sweep';
 
-export type { EntryVerdict, FixtureOwner, ReapFailure, ResidueEntry, SweepResult };
+export const FIXTURE_ROOT_DIRNAME = '.test-fixtures';
 
-export {
-  classifyEntry,
-  FIXTURE_ROOT_DIRNAME,
-  isOwnerAlive,
-  parseFixtureOwner,
-  renderResidue,
-  renderSweepLine,
-};
+export const SEP = '--';
+
+export const HOST = hostname().replace(/[^A-Za-z0-9_.]+/g, '_');
 
 const PATH_SEGMENT = /[\\/]/;
 
@@ -96,21 +75,6 @@ export const withoutGitLocationVars = (
   return out;
 };
 
-export const sweepFixtureResidue = (
-  opts: { readonly reap: boolean; readonly now?: number; readonly base?: string } = { reap: false },
-): SweepResult => {
-  if (opts.base !== undefined) {
-    return sweepFixtureResidueAt({ reap: opts.reap, now: opts.now, base: opts.base });
-  }
-  let base: string;
-  try {
-    base = join(repoRoot(), FIXTURE_ROOT_DIRNAME);
-  } catch {
-    return emptySweep('', false);
-  }
-  return sweepFixtureResidueAt({ reap: opts.reap, now: opts.now, base });
-};
-
 export type FixtureRoot = {
   readonly suite: string;
 
@@ -134,23 +98,7 @@ const tokenPrefix = (label: string): string => {
   return `${normalised}${SEP}${HOST}${SEP}${String(process.pid)}${SEP}`;
 };
 
-let sweptThisProcess = false;
-
-const detectOnce = (): void => {
-  if (sweptThisProcess) return;
-  sweptThisProcess = true;
-  const result = sweepFixtureResidue({ reap: false });
-
-  if (result.residue.length === 0 && result.unjudgeable === 0) return;
-  const what =
-    result.residue.length > 0
-      ? `${result.residue.length} stranded fixture dir(s) from an earlier run; NOT reaped here so the tooling plane can report them`
-      : `${result.unjudgeable} unaccounted fixture dir(s) (no ownership token, or another host)`;
-  process.stderr.write(`[fixture-root] ${what} under ${result.base}. ${renderSweepLine(result)}\n`);
-};
-
 export const fixtureDirAtBase = (prefix: string): string => {
-  detectOnce();
   return mkdtempSync(join(fixtureBase(), tokenPrefix(prefix)));
 };
 
@@ -159,7 +107,6 @@ export const makeFixtureRoot = (suite: string): FixtureRoot => {
   let seq = 0;
   const path = (): string => {
     if (created === undefined) {
-      detectOnce();
       created = mkdtempSync(join(fixtureBase(), tokenPrefix(suite)));
     }
     return created;

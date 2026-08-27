@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'bun:test';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { buildOrder, externalsOf, withBuiltinPrefixes } from '../build-packages';
+import { makeFixtureRoot } from '../fixture-root';
 import {
   distSubpathCarriesLeaf,
   distSubpathOfJsTarget,
@@ -169,17 +172,38 @@ describe('distSubpathCarriesLeaf', () => {
 describe('buildOrder', () => {
   const packages = publishablePackages();
 
-  it('builds a bundled sibling before its dependent, whose declaration fold-in needs it', () => {
-    const ordered = buildOrder(packages).map((pkg) => pkg.manifest.name);
+  it('bundles no sibling in THIS repository, so the ordering property has no live input here', () => {
+    expect(packages.flatMap((pkg) => workspaceSiblingsOf(pkg, packages))).toEqual([]);
+  });
 
-    for (const pkg of packages) {
-      for (const sibling of workspaceSiblingsOf(pkg, packages)) {
-        expect({
-          pkg: pkg.manifest.name,
-          sibling: sibling.manifest.name,
-          before: ordered.indexOf(sibling.manifest.name) < ordered.indexOf(pkg.manifest.name),
-        }).toEqual({ pkg: pkg.manifest.name, sibling: sibling.manifest.name, before: true });
-      }
+  it('builds a bundled sibling before its dependent, whose declaration fold-in needs it', () => {
+    const fixtures = makeFixtureRoot('build-order');
+    try {
+      const synthesise = (leaf: string, imports: readonly string[]) => {
+        const dir = join(fixtures.path(), leaf);
+        mkdirSync(join(dir, 'src'), { recursive: true });
+        const manifest = { name: `@packages/${leaf}`, version: '0.0.0' };
+        writeFileSync(join(dir, 'package.json'), `${JSON.stringify(manifest)}\n`);
+        writeFileSync(
+          join(dir, 'src', 'index.ts'),
+          `${imports.map((specifier) => `import '${specifier}';`).join('\n')}\nexport const leaf = '${leaf}';\n`,
+        );
+        return { dir, manifestPath: join(dir, 'package.json'), manifest };
+      };
+
+      const sibling = synthesise('synthetic-sibling', []);
+      const dependent = synthesise('synthetic-dependent', ['@packages/synthetic-sibling']);
+      const pair = [dependent, sibling];
+
+      expect(workspaceSiblingsOf(dependent, pair).map((pkg) => pkg.manifest.name)).toEqual([
+        '@packages/synthetic-sibling',
+      ]);
+      expect(buildOrder(pair).map((pkg) => pkg.manifest.name)).toEqual([
+        '@packages/synthetic-sibling',
+        '@packages/synthetic-dependent',
+      ]);
+    } finally {
+      fixtures.dispose();
     }
   });
 

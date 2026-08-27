@@ -9,7 +9,6 @@ consumer names the tarball and declares nothing else.
 | Package | Purpose |
 |---|---|
 | `@packages/effect-bun-test` | Effect-native test harness over `bun:test`: `it.effect` / `it.scoped` / `it.live` / `layer()`, virtual time via Effect's TestClock, scripted subprocesses, in-repo fixture roots, tagged-error assertions. |
-| `@packages/fixture-residue` | The fixture-residue convention: the `.test-fixtures` directory name, the `<label>--<host>--<pid>--<random>` ownership token, owner liveness, entry classification, the sweep and its rendering. Node builtins only. |
 | `@packages/bun-svelte-test` | Bun loader that compiles `.svelte` under `bun test`, plus a component-mount helper. |
 | `@packages/effect-test-kit` | Assertions over Effect exits and tagged errors. |
 | `@packages/uuid-effect` | Effect-native UUID service: crypto-entropy UUIDs injected through Effect context, with a deterministic test layer. |
@@ -98,12 +97,12 @@ copy.
 
 ### What IS bundled
 
-`@packages/fixture-residue` is folded into `@packages/effect-bun-test`'s `dist` — its JavaScript by
-the bundler, its declarations copied under `dist/_bundled/` with the specifiers repointed. It stays
-separately publishable for tooling that wants it on its own, but a consumer of the test harness
-never resolves the name. That matters because `@packages` is not an ownable scope: a dependency on
-it resolves nowhere, and it was exactly this closure that used to force consumers to hand-write
-`overrides` for packages they had never heard of.
+Nothing. No package imports a workspace sibling from its shipped source, so every published tarball
+has an EMPTY `@packages` closure and a consumer naming one package resolves exactly that package.
+`@packages/fixture-residue` used to be folded into `@packages/effect-bun-test`'s `dist`; it was
+deleted rather than unbundled. The bundling machinery in `scripts/build-packages.ts` survives and is
+now unexercised — `publishable-contract.test.ts` pins the sibling set EMPTY, so re-introducing one
+turns that test red and is the signal to re-arm the carve-out coverage alongside it.
 
 ### What is verified
 
@@ -162,15 +161,15 @@ bun run test:e2e    # build, pack, then install the tarballs into a throwaway co
 ```
 
 **The build comes first, and `dod` runs it first for that reason.** In-repo code imports workspace
-siblings by package name — `scripts/fixture-root.ts` reaches for `@packages/fixture-residue/sweep`,
+siblings by package name — `scripts/fixture-root.ts` reaches for `@packages/effect-bun-test/fixture-root`,
 `bun-svelte-test`'s suite for `@packages/effect-bun-test` — and those names now resolve through an
 `exports` map that points at `dist`. On a fresh checkout `bun run tsc` therefore fails until a build
 has run, with a plain `Cannot find module`. `bun run dod` and `bun run test:e2e` each build first so
 neither can be run out of order; a bare `bun run tsc` or `bun test` cannot, so run `bun run build`
 after `bun install`.
 
-The build bootstraps itself: `buildOrder` puts a bundled sibling ahead of its dependent, so
-`fixture-residue` is built before `effect-bun-test` needs it.
+The build bootstraps itself: `buildOrder` puts a bundled sibling ahead of its dependent. No package
+bundles a sibling today, so that ordering currently has nothing to order.
 
 **bun is the only runtime executed here — node is never spawned**, and CI installs no node
 toolchain. Two settings in `bunfig.toml` hold that, both closing paths that shell out silently

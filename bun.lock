@@ -8,7 +8,7 @@
         "@ast-grep/cli": "catalog:",
         "@biomejs/biome": "catalog:",
         "@effect/tsgo": "catalog:",
-        "@packages/fixture-residue": "workspace:*",
+        "@packages/effect-bun-test": "workspace:*",
         "@types/bun": "catalog:",
         "@types/mdast": "catalog:",
         "@types/node": "catalog:",
@@ -45,7 +45,6 @@
         "@types/bun": "^1.4.0",
       },
       "devDependencies": {
-        "@packages/fixture-residue": "workspace:*",
         "effect": "catalog:",
         "typescript": "catalog:",
       },
@@ -63,14 +62,6 @@
       },
       "peerDependencies": {
         "effect": ">=4.0.0-rc.109 <5",
-      },
-    },
-    "packages/fixture-residue": {
-      "name": "@packages/fixture-residue",
-      "version": "0.5.0",
-      "devDependencies": {
-        "@types/bun": "catalog:",
-        "typescript": "catalog:",
       },
     },
     "packages/uuid-effect": {
@@ -184,8 +175,6 @@
     "@packages/effect-bun-test": ["@packages/effect-bun-test@workspace:packages/effect-bun-test"],
 
     "@packages/effect-test-kit": ["@packages/effect-test-kit@workspace:packages/effect-test-kit"],
-
-    "@packages/fixture-residue": ["@packages/fixture-residue@workspace:packages/fixture-residue"],
 
     "@packages/uuid-effect": ["@packages/uuid-effect@workspace:packages/uuid-effect"],
 

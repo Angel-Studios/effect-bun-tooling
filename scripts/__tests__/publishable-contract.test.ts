@@ -234,11 +234,11 @@ describe('publishable package contract', () => {
     expect(across).toContain('effect');
   });
 
-  it('finds the workspace sibling the build is meant to bundle, so that carve-out is not vacuous either', () => {
+  it('bundles NO workspace sibling, so the carve-out above is inert rather than merely unexercised', () => {
     const bundled = packages.flatMap((pkg) =>
       workspaceSiblingsOf(pkg, packages).map((sibling) => sibling.manifest.name),
     );
-    expect(bundled).toContain('@packages/fixture-residue');
+    expect(bundled).toEqual([]);
   });
 });
 
