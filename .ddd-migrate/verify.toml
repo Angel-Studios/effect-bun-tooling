@@ -1,0 +1,15 @@
+apiVersion = 1
+
+# ONE surface, deliberately, and splitting it back out is a regression.
+# `bun run build` opens with rmSync(dist) and `bun run test:e2e` builds again, while `tsc`,
+# `lint:effect` and `test:unit:once` READ dist. The migrator runs surfaces concurrently
+# (DEFAULT_SURFACE_CONCURRENCY = 2) with no ordering constraint and no `mutatesTree` field to
+# declare one, so eight separate surfaces race on dist/ and the verdict is nondeterministic —
+# reproduced as `bun run build & bun run tsc &` -> TS7016 on the first attempt.
+# `.toolplane/gates.toml` already records the correct answer for this repo: build is
+# `mutatesTree = true` and runs in a sequential batch before the read-only gates. Until
+# DeclaredSurface can carry that, the sequencing has to live inside a single command.
+[[surface]]
+name = "dod-and-e2e"
+command = ["sh", "-c", "bun run dod && bun run test:e2e"]
+timeoutMs = 1800000
