@@ -89,6 +89,9 @@ const TYPECHECK_SOURCE = [
  *  `effect`) has a pure-JS fallback. */
 const INSTALL = ['bun', 'install', '--no-summary', '--ignore-scripts'] as const;
 
+/** The `@types/node` a consumer that lib-checks `bun-types@1.4.2` must have; see `consumerDir`. */
+const CONSUMER_NODE_TYPES = '25.7.0';
+
 /** TypeScript's own entry, run under bun. The `tsc` bin carries a `#!/usr/bin/env node` shebang,
  *  and nothing here may spawn node. */
 const TSC_ENTRY = join(repoRoot, 'node_modules', 'typescript', 'lib', 'tsc.js');
@@ -113,7 +116,13 @@ const tarballs = ((): ReadonlyMap<string, string> => {
 
 /**
  * A consumer manifest that names the tarballs and NOTHING else: no `overrides`, no peer to satisfy,
- * no `effect`, `svelte` or `@types/bun` of its own. That is the whole claim this suite proves.
+ * no `effect`, `svelte` or `@types/bun` of its own. That is the whole claim this suite proves. All
+ * three are peers, and bun installs a missing peer at the top level.
+ *
+ * The one devDependency is outside that claim. `bun-types` declares `@types/node` as `*`, which
+ * bun resolves to the `latest` dist-tag, and `bun-types@1.4.2` names `node:util` and `node:tls`
+ * members that exist only from `@types/node@25`. The typecheck below keeps `skipLibCheck` off, so
+ * the consumer pins the node types the way any consumer that lib-checks `bun-types` must.
  */
 const consumerDir = ((): string => {
   const dir = join(fixtures.path(), 'consumer-bun');
@@ -127,6 +136,7 @@ const consumerDir = ((): string => {
         private: true,
         type: 'module',
         dependencies: Object.fromEntries([...tarballs].map(([name, path]) => [name, `file:${path}`])),
+        devDependencies: { '@types/node': CONSUMER_NODE_TYPES },
       },
       null,
       2,
@@ -152,7 +162,7 @@ const tsconfigFor = (moduleResolution: 'bundler' | 'nodenext'): string =>
         lib: ['ESNext', 'DOM'],
         module: moduleResolution === 'nodenext' ? 'nodenext' : 'esnext',
         moduleResolution,
-        // `@types/bun` arrives as a dependency of the packages, not from the consumer.
+        // `@types/bun` is a peer of the packages. bun installs it because the consumer named none.
         types: ['bun'],
       },
       include: ['check.ts'],

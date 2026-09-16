@@ -50,6 +50,13 @@ export const BUNDLED_TYPES_DIR = '_bundled';
  * external by exact specifier, so a package reached by subpath (`effect/Layer`,
  * `svelte/compiler`) needs the wildcard form alongside the bare name.
  */
+/**
+ * The peers the dist must import. A `@types/*` peer is declaration-only: it has no JavaScript for
+ * the bundler to inline, and no JavaScript import can name it, so the inlined-copy check skips it.
+ */
+export const runtimePeersOf = (pkg: WorkspacePackage): readonly string[] =>
+  Object.keys(pkg.manifest.peerDependencies ?? {}).filter((name) => !name.startsWith('@types/'));
+
 export const externalsOf = (pkg: WorkspacePackage): readonly string[] =>
   [
     ...Object.keys(pkg.manifest.dependencies ?? {}),
@@ -188,7 +195,7 @@ export const buildOne = (pkg: WorkspacePackage, siblings: readonly WorkspacePack
   // the exact failure the peer declaration exists to prevent. Measured once for real, when
   // `externalsOf` did not yet read `peerDependencies`.
   const distImports = bareImportsOf(distModuleFiles(pkg));
-  for (const peer of Object.keys(pkg.manifest.peerDependencies ?? {})) {
+  for (const peer of runtimePeersOf(pkg)) {
     if (!distImports.has(peer)) {
       throw new Error(
         `${pkg.manifest.name} declares ${peer} as a peer dependency, but its dist imports it ` +

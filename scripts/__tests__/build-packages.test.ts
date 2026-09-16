@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { buildOrder, externalsOf, withBuiltinPrefixes } from '../build-packages';
+import { buildOrder, externalsOf, runtimePeersOf, withBuiltinPrefixes } from '../build-packages';
 import {
   publishablePackages,
   sourceEntrypoints,
@@ -62,6 +62,22 @@ describe('externalsOf', () => {
         },
       }),
     ).toEqual(['effect', 'effect/*', 'svelte', 'svelte/*']);
+  });
+
+  it('does not ask the dist to import a `@types/*` peer, which is declaration-only', () => {
+    // `@types/bun` is a peer so that a consumer resolves ONE copy of the bun types, but it ships
+    // no JavaScript: nothing can inline it, and no dist import can name it.
+    expect(
+      runtimePeersOf({
+        dir: '',
+        manifestPath: '',
+        manifest: {
+          name: 'x',
+          version: '0.0.0',
+          peerDependencies: { '@types/bun': '^1.3.14', effect: '>=4.0.0-rc.109 <5' },
+        },
+      }),
+    ).toEqual(['effect']);
   });
 
   it('externalises every real peer this repo ships, so none of them can be inlined', () => {
