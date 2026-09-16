@@ -50,8 +50,12 @@ const PUBLISHED_SCOPE = '@packages/';
  * dependency, a consumer whose own copy falls outside the range gets a second one nested silently
  * at exit 0; as a peer, they get `warn: incorrect peer dependency` and NO second copy. A consumer
  * who declares nothing is unaffected either way — bun auto-installs a missing peer.
+ *
+ * `@types/bun` crosses the boundary at the type level: it declares the global `Bun` namespace and
+ * the `bun:test` module, and a consumer's own copy and a nested second copy both load into ONE
+ * TypeScript program. The consumer's copy must be the one these packages resolve.
  */
-const CROSS_BOUNDARY_SINGLETONS = ['effect', 'svelte'];
+const CROSS_BOUNDARY_SINGLETONS = ['effect', 'svelte', '@types/bun'];
 
 /** A peer range must stay open, so a consumer can dedupe the singleton onto the copy they already
  *  have. An exact pin is what made the previous peer declaration painful: it admitted precisely

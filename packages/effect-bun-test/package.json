@@ -55,13 +55,12 @@
     "check": "biome check src/ __tests__/",
     "test:unit:once": "bun test"
   },
-  "dependencies": {
-    "@types/bun": "^1.4.0"
-  },
   "peerDependencies": {
+    "@types/bun": "^1.4.0",
     "effect": ">=4.0.0-rc.109 <5"
   },
   "devDependencies": {
+    "@types/bun": "catalog:",
     "effect": "catalog:",
     "typescript": "catalog:"
   }

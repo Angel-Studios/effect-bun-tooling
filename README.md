@@ -39,12 +39,12 @@ to write an `overrides` entry.
 
 ### Nothing to declare
 
-`@types/bun`, `happy-dom` and `@happy-dom/global-registrator` are ordinary `dependencies`, so a
-package manager installs them unprompted.
+`happy-dom` and `@happy-dom/global-registrator` are ordinary `dependencies`, so a package manager
+installs them unprompted.
 
-`effect` and `svelte` are **peer** dependencies, and a consumer still declares neither: **bun
-auto-installs a missing peer**. Verified — a consumer naming only the harness, with no `effect` of
-its own, ends up with `effect` installed at the top level.
+`effect`, `svelte` and `@types/bun` are **peer** dependencies, and a consumer still declares none of
+them: **bun auto-installs a missing peer**. Verified — a consumer naming only the harness, with no
+`effect` of its own, ends up with `effect` installed at the top level.
 
 The ranges are open — `effect` at `>=4.0.0-rc.109 <5`, `svelte` at `^5.56.8` — never an exact pin.
 The exact pin `4.0.0-rc.109` is what made the earlier peer declaration painful: it admitted one
@@ -58,9 +58,9 @@ stays on the `v0.2.1` tarballs, which keep working because they are pinned by UR
 `CommandExecutor` became `effect/unstable/process`, and `@effect/platform/Error` became
 `effect/PlatformError`. There is no v4 release of `@effect/platform`, and none is needed.
 
-### Why `effect` and `svelte` are peers
+### Why `effect`, `svelte` and `@types/bun` are peers
 
-Both must exist exactly **once** in a consumer's tree, and a peer declaration is what refuses to
+Each must exist exactly **once** in a consumer's tree, and a peer declaration is what refuses to
 duplicate them. Measured on bun 1.3.14, with a consumer pinned to `effect@3.19.0` while these
 packages require v4:
 
@@ -77,6 +77,12 @@ For `svelte` the duplicate is the more dangerous one: `bun-svelte-test` compiles
 components, and compiler output binds `svelte/internal/client` at runtime. A consumer on svelte 4
 would silently receive a nested svelte 5 and compile against one copy while mounting on another.
 
+`@types/bun` declares the global `Bun` namespace and the `bun:test` module. A consumer's own copy
+and a nested second copy both load into one TypeScript program, so the consumer's `@types/bun`
+must be the one these packages resolve. As a plain dependency, a range such as `^1.4.0` resolves
+once and then stays where the lockfile left it, so a consumer that later moves its own `@types/bun`
+gets two copies. As a peer, the consumer's version is the only one.
+
 **This is why the published JavaScript never inlines either one**, though it could otherwise depend
 on nothing at all. There is a second, type-level reason it could not: the exported signatures are
 written in Effect's own types — `it.effect` takes an `Effect.Effect<A, E, R>`, `it.layer` takes a
@@ -84,9 +90,9 @@ written in Effect's own types — `it.effect` takes an `Effect.Effect<A, E, R>`,
 would mean rolling Effect's entire declaration surface into each package and typing a consumer's
 test callbacks against that copy rather than their own install.
 
-One thing a peer does cost: **pnpm and yarn do not auto-install peers**, they warn. Consumers on
-those managers must declare `effect` (and `svelte`) themselves. Only `bun install` is verified here
-either way.
+One thing a peer does cost: **yarn, and pnpm with `auto-install-peers` off, do not auto-install
+peers**, they warn. Consumers on those managers must declare `effect`, `svelte` and `@types/bun`
+themselves. Only `bun install` is verified here either way.
 
 A note on Effect v4 specifically: duplication is no longer instantly fatal the way it was under v3.
 v4 identifies values by string type IDs — `"~effect/Effect"`, `"~effect/Context"` — and keys a

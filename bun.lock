@@ -23,17 +23,18 @@
       "version": "0.5.0",
       "dependencies": {
         "@happy-dom/global-registrator": "20.9.0",
-        "@types/bun": "^1.4.0",
         "happy-dom": "20.9.0",
       },
       "devDependencies": {
         "@packages/effect-bun-test": "workspace:*",
         "@testing-library/svelte": "5.3.1",
+        "@types/bun": "catalog:",
         "effect": "catalog:",
         "svelte": "5.56.8",
         "typescript": "catalog:",
       },
       "peerDependencies": {
+        "@types/bun": "^1.4.0",
         "effect": ">=4.0.0-rc.109 <5",
         "svelte": "^5.56.8",
       },
@@ -41,14 +42,13 @@
     "packages/effect-bun-test": {
       "name": "@packages/effect-bun-test",
       "version": "0.5.0",
-      "dependencies": {
-        "@types/bun": "^1.4.0",
-      },
       "devDependencies": {
+        "@types/bun": "catalog:",
         "effect": "catalog:",
         "typescript": "catalog:",
       },
       "peerDependencies": {
+        "@types/bun": "^1.4.0",
         "effect": ">=4.0.0-rc.109 <5",
       },
     },
