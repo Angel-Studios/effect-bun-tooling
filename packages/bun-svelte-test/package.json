@@ -34,6 +34,10 @@
     "./app-doubles/environment": {
       "types": "./dist/app-doubles/environment.d.ts",
       "default": "./dist/app-doubles/environment.js"
+    },
+    "./app-doubles/env": {
+      "types": "./dist/app-doubles/env.d.ts",
+      "default": "./dist/app-doubles/env.js"
     }
   },
   "files": [
@@ -52,8 +56,8 @@
     "test:unit:once": "bun test"
   },
   "dependencies": {
-    "@happy-dom/global-registrator": "20.9.0",
-    "happy-dom": "20.9.0"
+    "@happy-dom/global-registrator": "21.0.4",
+    "happy-dom": "21.0.4"
   },
   "peerDependencies": {
     "@types/bun": "^1.4.0",

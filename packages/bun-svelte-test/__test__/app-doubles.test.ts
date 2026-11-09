@@ -1,13 +1,24 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, mock } from 'bun:test';
 import * as Effect from 'effect/Effect';
 import { flushSync } from 'svelte';
+import * as appEnv from '$app/env';
 import { browser, building, dev, version } from '$app/environment';
-import { goto, invalidateAll, pushState, resetNavigation } from '$app/navigation';
+import {
+  capturedNavigationCalls,
+  goto,
+  invalidateAll,
+  pushState,
+  refreshAll,
+  resetNavigation,
+  snapshot,
+} from '$app/navigation';
 import { navigating, page, resetPage, setNavigating, setPage } from '$app/state';
+import * as envDirect from '../src/app-doubles/env';
 import * as environmentDirect from '../src/app-doubles/environment';
 import * as navigationDirect from '../src/app-doubles/navigation';
 import * as stateDirect from '../src/app-doubles/state';
 import { DEFAULT_TEST_URL } from '../src/dom';
+import * as packageEntry from '../src/index';
 import { mountComponent } from '../src/mount';
 import Page from './fixtures/+page.svelte';
 
@@ -30,6 +41,23 @@ describe('$app specifier resolution', () => {
     expect(dev).toBe(false);
     expect(building).toBe(false);
     expect(version).toBe('0');
+  });
+
+  it('$app/env is the same module instance as the double', () => {
+    expect(appEnv.browser).toBe(envDirect.browser);
+    expect(appEnv.browser).toBe(true);
+    expect(appEnv.dev).toBe(false);
+    expect(appEnv.building).toBe(false);
+    expect(appEnv.version).toBe('0');
+  });
+
+  it('$app/environment re-exports the values of $app/env', () => {
+    expect({ browser, dev, building, version }).toEqual({
+      browser: appEnv.browser,
+      dev: appEnv.dev,
+      building: appEnv.building,
+      version: appEnv.version,
+    });
   });
 });
 
@@ -86,6 +114,77 @@ describe('$app/navigation captures calls', () => {
   });
 });
 
+describe('the $app/navigation doubles of SvelteKit 3', () => {
+  const restoreNumber = (_value: number): void => {};
+  // Declared outside the test's Effect: it is a `$app/navigation` double, so it
+  // runs at bun's promise boundary rather than under the test's services.
+  const rejectingRefreshAll = (): Promise<void> =>
+    Effect.runPromise(Effect.die(new Error('per-test override')));
+
+  it('refreshAll() records its call and returns a resolved promise', () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const result = yield* Effect.promise(() => refreshAll());
+
+        expect(result).toBeUndefined();
+        expect(refreshAll.mock.calls).toHaveLength(1);
+        expect(invalidateAll.mock.calls).toHaveLength(0);
+      }),
+    ));
+
+  it('resetNavigation() clears refreshAll() and restores its stub', () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        refreshAll.mockImplementation(rejectingRefreshAll);
+
+        expect(refreshAll()).rejects.toThrow('per-test override');
+
+        resetNavigation();
+
+        expect(refreshAll.mock.calls).toHaveLength(0);
+        yield* Effect.promise(() => refreshAll());
+        expect(refreshAll.mock.calls).toHaveLength(1);
+      }),
+    ));
+
+  it('snapshot() records its options and calls neither callback', () => {
+    const capture = mock(() => 1);
+    const restore = mock(restoreNumber);
+    const options = { id: 'filters', capture, restore };
+
+    snapshot(options);
+
+    expect(snapshot.mock.calls).toEqual([[options]]);
+    expect(capture).not.toHaveBeenCalled();
+    expect(restore).not.toHaveBeenCalled();
+  });
+
+  it('resetNavigation() clears snapshot()', () => {
+    snapshot({ capture: () => 1, restore: restoreNumber });
+
+    expect(snapshot.mock.calls).toHaveLength(1);
+
+    resetNavigation();
+
+    expect(snapshot.mock.calls).toHaveLength(0);
+  });
+
+  it('capturedNavigationCalls() reports both new doubles', () => {
+    refreshAll();
+    snapshot({ capture: () => 1, restore: restoreNumber });
+
+    const captured = capturedNavigationCalls();
+
+    expect(captured['refreshAll']).toHaveLength(1);
+    expect(captured['snapshot']).toHaveLength(1);
+  });
+
+  it('the package entry exports the same doubles', () => {
+    expect(packageEntry.refreshAll).toBe(refreshAll);
+    expect(packageEntry.snapshot).toBe(snapshot);
+  });
+});
+
 describe('$app/state mutation and reset', () => {
   it('setPage() mutates the page object in place', () => {
     const before = page.url.pathname;
@@ -134,6 +233,24 @@ describe('$app/state mutation and reset', () => {
   it('the automatic afterEach reset the previous test`s page', () => {
     expect(page.url.href).toBe(DEFAULT_TEST_URL);
     expect(page.status).toBe(200);
+  });
+});
+
+describe('page.shallow of SvelteKit 3', () => {
+  const target = { params: { id: '42' }, route: { id: '/lab/devices/[id]' }, url: new URL(DEFAULT_TEST_URL) };
+
+  it('is null when no shallow navigation occurred', () => {
+    expect(page.shallow).toBeNull();
+  });
+
+  it('setPage() writes it, and resetPage() restores null', () => {
+    setPage({ shallow: target });
+
+    expect(page.shallow).toEqual(target);
+
+    resetPage();
+
+    expect(page.shallow).toBeNull();
   });
 });
 

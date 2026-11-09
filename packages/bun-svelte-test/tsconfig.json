@@ -19,6 +19,7 @@
       "bun"
     ],
     "paths": {
+      "$app/env": ["./src/app-doubles/env.ts"],
       "$app/environment": ["./src/app-doubles/environment.ts"],
       "$app/navigation": ["./src/app-doubles/navigation.ts"],
       "$app/state": ["./src/app-doubles/state.ts"]
