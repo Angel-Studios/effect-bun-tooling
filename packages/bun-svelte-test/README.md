@@ -93,7 +93,9 @@ production code will resolve `$app/*` to the doubles.
    reads exactly like a loader bug. SvelteKit 3 writes that file to
    `node_modules/$app/tsconfig.json`, so the check also names that path when this package's
    tsconfig extends `$app/tsconfig` and the file is missing.
-2. Registers happy-dom globals via `@happy-dom/global-registrator`.
+2. Registers happy-dom globals via `@happy-dom/global-registrator`, and corrects two happy-dom
+   gaps: `:checked` matches a selected `<option>`, and the rejected `finished` promise of a
+   canceled animation is marked as handled, as the Web Animations standard requires.
 3. Registers the loader plugin.
 4. **Asserts the svelte browser-build substitution took, and throws if not.**
 5. Eagerly imports `@testing-library/svelte`, if the consumer installed one, to wire its

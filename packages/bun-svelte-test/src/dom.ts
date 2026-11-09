@@ -1,4 +1,5 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator';
+import { installAnimationCancelSupport } from './animation-cancel.ts';
 import { installCheckedPseudoSupport } from './checked-pseudo.ts';
 
 export const DEFAULT_TEST_URL = 'http://localhost:3000/';
@@ -21,6 +22,7 @@ export const registerDom = (): void => {
     GlobalRegistrator.register({ url: DEFAULT_TEST_URL });
   }
   installCheckedPseudoSupport();
+  installAnimationCancelSupport();
 };
 
 type HappyDomControl = { readonly setURL: (url: string) => void };
