@@ -39,7 +39,13 @@ const INSTALL_FAILURE_HINT = [
 
 type PseudoDescriptor = { readonly name?: string };
 type SelectorMatch = { readonly priorityWeight: number } | null;
-type MatchPseudoItem = (element: unknown, parentChildren: unknown, pseudo: PseudoDescriptor) => SelectorMatch;
+type MatchPseudoItem = (
+  scope: unknown,
+  element: unknown,
+  parentChildren: unknown,
+  pseudo: PseudoDescriptor,
+  ignoreErrors: unknown,
+) => SelectorMatch;
 type CacheBucket = 'querySelector' | 'querySelectorAll' | 'matches';
 type Indexed = Record<PropertyKey, unknown>;
 
@@ -76,14 +82,16 @@ const patchCheckedMatching = (): void => {
 
   prototype['matchPseudoItem'] = function patchedMatchPseudoItem(
     this: unknown,
+    scope: unknown,
     element: unknown,
     parentChildren: unknown,
     pseudo: PseudoDescriptor,
+    ignoreErrors: unknown,
   ): SelectorMatch {
     if (pseudo?.name === CHECKED_PSEUDO_NAME && isSelectedOption(element)) {
       return { priorityWeight: MATCH_PRIORITY_WEIGHT };
     }
-    return original.call(this, element, parentChildren, pseudo);
+    return original.call(this, scope, element, parentChildren, pseudo, ignoreErrors);
   };
 };
 
