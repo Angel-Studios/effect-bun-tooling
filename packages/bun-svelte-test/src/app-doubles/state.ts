@@ -1,6 +1,12 @@
 import * as Effect from 'effect/Effect';
 import { DEFAULT_TEST_URL } from '../dom.ts';
 
+export type ShallowDouble = {
+  params: Record<string, string> | null;
+  route: { id: string | null } | null;
+  url: URL;
+};
+
 export type PageDouble = {
   url: URL;
   params: Record<string, string>;
@@ -10,6 +16,7 @@ export type PageDouble = {
   data: Record<string, unknown>;
   form: unknown;
   state: Record<string, unknown>;
+  shallow: ShallowDouble | null;
 };
 
 export type NavigatingDouble = {
@@ -35,6 +42,7 @@ const defaultPage = (): PageDouble => ({
   data: {},
   form: null,
   state: {},
+  shallow: null,
 });
 
 const defaultNavigating = (): NavigatingDouble => ({

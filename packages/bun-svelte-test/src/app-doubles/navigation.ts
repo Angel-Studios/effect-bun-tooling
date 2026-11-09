@@ -6,6 +6,14 @@ type BeforeNavigateCallback = (navigation: unknown) => void;
 type AfterNavigateCallback = (navigation: unknown) => void;
 type OnNavigateCallback = (navigation: unknown) => void | Promise<void>;
 type PreloadDataResult = { type: 'loaded'; status: number; data: Record<string, unknown> };
+// The real `snapshot` is generic in the captured value. A bun mock cannot keep a generic call
+// signature, so `restore` takes `never`, which accepts a callback for every value type.
+type SnapshotOptions = {
+  readonly id?: string;
+  readonly capture: () => unknown;
+  readonly restore: (value: never) => void;
+  readonly reset?: () => void;
+};
 
 // SvelteKit's real `$app/navigation` returns promises, so the doubles have to as
 // well. Each is the Effect for the stubbed outcome, run at that boundary.
@@ -14,6 +22,7 @@ const gotoImpl = (_url: string | URL, _options?: Record<string, unknown>): Promi
 const invalidateImpl = (_resource: string | URL | ((url: URL) => boolean)): Promise<void> =>
   Effect.runPromise(Effect.void);
 const invalidateAllImpl = (): Promise<void> => Effect.runPromise(Effect.void);
+const refreshAllImpl = (): Promise<void> => Effect.runPromise(Effect.void);
 const preloadDataImpl = (_href: string): Promise<PreloadDataResult> =>
   Effect.runPromise(Effect.sync((): PreloadDataResult => ({ type: 'loaded', status: 200, data: {} })));
 const preloadCodeImpl = (..._pathnames: string[]): Promise<void> => Effect.runPromise(Effect.void);
@@ -22,10 +31,12 @@ const replaceStateImpl = (_url: string | URL, _state: Record<string, unknown>): 
 const beforeNavigateImpl = (_callback: BeforeNavigateCallback): void => {};
 const afterNavigateImpl = (_callback: AfterNavigateCallback): void => {};
 const onNavigateImpl = (_callback: OnNavigateCallback): void => {};
+const snapshotImpl = (_options: SnapshotOptions): void => {};
 
 export const goto = mock(gotoImpl);
 export const invalidate = mock(invalidateImpl);
 export const invalidateAll = mock(invalidateAllImpl);
+export const refreshAll = mock(refreshAllImpl);
 export const preloadData = mock(preloadDataImpl);
 export const preloadCode = mock(preloadCodeImpl);
 export const pushState = mock(pushStateImpl);
@@ -33,6 +44,7 @@ export const replaceState = mock(replaceStateImpl);
 export const beforeNavigate = mock(beforeNavigateImpl);
 export const afterNavigate = mock(afterNavigateImpl);
 export const onNavigate = mock(onNavigateImpl);
+export const snapshot = mock(snapshotImpl);
 
 export type NavigationTargetDouble = NavigationTarget;
 
@@ -40,6 +52,7 @@ const stubs = [
   [goto, gotoImpl],
   [invalidate, invalidateImpl],
   [invalidateAll, invalidateAllImpl],
+  [refreshAll, refreshAllImpl],
   [preloadData, preloadDataImpl],
   [preloadCode, preloadCodeImpl],
   [pushState, pushStateImpl],
@@ -47,6 +60,7 @@ const stubs = [
   [beforeNavigate, beforeNavigateImpl],
   [afterNavigate, afterNavigateImpl],
   [onNavigate, onNavigateImpl],
+  [snapshot, snapshotImpl],
   // biome-ignore lint/suspicious/noExplicitAny: heterogeneous mock signatures in one table
 ] as ReadonlyArray<readonly [{ mockClear: () => void; mockImplementation: (fn: any) => void }, any]>;
 
@@ -54,6 +68,7 @@ export const capturedNavigationCalls = (): Record<string, readonly unknown[][]> 
   goto: goto.mock.calls,
   invalidate: invalidate.mock.calls,
   invalidateAll: invalidateAll.mock.calls,
+  refreshAll: refreshAll.mock.calls,
   preloadData: preloadData.mock.calls,
   preloadCode: preloadCode.mock.calls,
   pushState: pushState.mock.calls,
@@ -61,6 +76,7 @@ export const capturedNavigationCalls = (): Record<string, readonly unknown[][]> 
   beforeNavigate: beforeNavigate.mock.calls,
   afterNavigate: afterNavigate.mock.calls,
   onNavigate: onNavigate.mock.calls,
+  snapshot: snapshot.mock.calls,
 });
 
 export const resetNavigation = (): void => {

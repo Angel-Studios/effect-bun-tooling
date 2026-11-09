@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import QuerySelector from 'happy-dom/lib/query-selector/QuerySelector.js';
 import { flushSync } from 'svelte';
 import { mountComponent } from '../src/mount';
 import BoundSelect from './fixtures/BoundSelect.svelte';
@@ -124,6 +125,42 @@ describe(':checked matches a selected <option>', () => {
     expect(second.selected).toBe(true);
     expect(second.hasAttribute('selected')).toBe(false);
     expect(select.querySelectorAll('[selected]').length).toBe(0);
+  });
+});
+
+describe('every other pseudo-class gets the five arguments of happy-dom 21', () => {
+  const buildList = (): HTMLElement => {
+    document.body.innerHTML = '<ul id="list"><li id="one"></li><li id="two"></li></ul>';
+    return document.getElementById('list') as HTMLElement;
+  };
+
+  it('passes the scope, which :root reads', () => {
+    expect(document.documentElement.matches(':root')).toBe(true);
+    expect(buildList().matches(':root')).toBe(false);
+  });
+
+  it('passes the parent children, which :first-child reads', () => {
+    const list = buildList();
+
+    expect(list.querySelector(':first-child')?.id).toBe('one');
+    expect((document.getElementById('two') as HTMLElement).matches(':first-child')).toBe(false);
+  });
+
+  it('passes the descriptor, which :not reads', () => {
+    expect(buildList().querySelector('li:not(:first-child)')?.id).toBe('two');
+  });
+
+  // happy-dom caches a match per element and selector, so each call needs its own host.
+  const buildHost = (): Parameters<typeof QuerySelector.matches>[0] => {
+    const host = document.createElement('div');
+    host.attachShadow({ mode: 'open' });
+    document.body.append(host);
+    return host as unknown as Parameters<typeof QuerySelector.matches>[0];
+  };
+
+  it('passes ignoreErrors, which :host reads', () => {
+    expect(() => QuerySelector.matches(buildHost(), ':host(:nth-child)')).toThrow('is not a valid selector');
+    expect(QuerySelector.matches(buildHost(), ':host(:nth-child)', { ignoreErrors: true })).toBeNull();
   });
 });
 

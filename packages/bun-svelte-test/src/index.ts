@@ -9,6 +9,7 @@ export type {
   NavigatingDouble,
   PageDouble,
   SetPageInput,
+  ShallowDouble,
   UpdatedDouble,
 } from './app-doubles/state.ts';
 export type { MountedComponent } from './mount.ts';
@@ -38,6 +39,7 @@ export const version = environment.version;
 export const goto = navigation.goto;
 export const invalidate = navigation.invalidate;
 export const invalidateAll = navigation.invalidateAll;
+export const refreshAll = navigation.refreshAll;
 export const preloadData = navigation.preloadData;
 export const preloadCode = navigation.preloadCode;
 export const pushState = navigation.pushState;
@@ -45,6 +47,7 @@ export const replaceState = navigation.replaceState;
 export const beforeNavigate = navigation.beforeNavigate;
 export const afterNavigate = navigation.afterNavigate;
 export const onNavigate = navigation.onNavigate;
+export const snapshot = navigation.snapshot;
 
 export const capturedNavigationCalls = navigation.capturedNavigationCalls;
 

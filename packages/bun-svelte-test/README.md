@@ -34,7 +34,7 @@ preload = ["@packages/bun-svelte-test/register"]
 | `./Foo.svelte` | `onLoad` -> `compile()` | nothing |
 | `./foo.svelte.ts` | `onLoad` -> type-strip -> `compileModule()` | nothing |
 | `$lib/*` | bun reads tsconfig `paths` from SvelteKit's generated `.svelte-kit/tsconfig.json` | run `svelte-kit sync` |
-| `$app/environment`, `$app/navigation`, `$app/state` | tsconfig `paths` -> the doubles in `dist/app-doubles/` | declare them (below) |
+| `$app/env`, `$app/environment`, `$app/navigation`, `$app/state` | tsconfig `paths` -> the doubles in `dist/app-doubles/` | declare them (below) |
 | `svelte`, `svelte/legacy`, `svelte/reactivity`, `svelte/store` | `onLoad` substitutes the browser build | nothing |
 
 There is **no `onResolve` anywhere in this package**: in bun 1.3.14 a runtime plugin's
@@ -59,6 +59,7 @@ files correctly reject it:
 
       // A path RELATIVE TO THIS FILE, into the installed package. `.js` serves both sides:
       // bun loads the built module, and TypeScript maps `.js` to the `.d.ts` beside it.
+      "$app/env": ["../node_modules/@packages/bun-svelte-test/dist/app-doubles/env.js"],
       "$app/environment": ["../node_modules/@packages/bun-svelte-test/dist/app-doubles/environment.js"],
       "$app/navigation": ["../node_modules/@packages/bun-svelte-test/dist/app-doubles/navigation.js"],
       "$app/state": ["../node_modules/@packages/bun-svelte-test/dist/app-doubles/state.js"]
@@ -79,7 +80,7 @@ while leaving `src/` unable to resolve it. Whether it is also a separate `tsc` p
 per-package choice: check what your own package's `include` covers rather than copying a
 command from here.
 
-This package itself declares the same three `$app/*` keys in its **root** `tsconfig.json`
+This package itself declares the same four `$app/*` keys in its **root** `tsconfig.json`
 instead, pointing at its own `src/`, because that is where the doubles live and there is
 nothing to hide them from. A consumer with real `src/` code must scope them to the test directory as above, or
 production code will resolve `$app/*` to the doubles.
@@ -89,7 +90,9 @@ production code will resolve `$app/*` to the doubles.
 1. Fails fast, **by name**, if this package's tsconfig extends `.svelte-kit/tsconfig.json`
    and that file is missing — it is gitignored, so a fresh checkout or new worktree needs
    `svelte-kit sync`. Without this you get a bare `Cannot find module '$lib/...'` that
-   reads exactly like a loader bug.
+   reads exactly like a loader bug. SvelteKit 3 writes that file to
+   `node_modules/$app/tsconfig.json`, so the check also names that path when this package's
+   tsconfig extends `$app/tsconfig` and the file is missing.
 2. Registers happy-dom globals via `@happy-dom/global-registrator`.
 3. Registers the loader plugin.
 4. **Asserts the svelte browser-build substitution took, and throws if not.**
